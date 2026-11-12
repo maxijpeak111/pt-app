@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Placeholder app icon: black square, red bar, white "PT" -->
+  <rect width="512" height="512" fill="#0a0a0a"/>
+  <rect x="96" y="340" width="320" height="20" fill="#dc2626"/>
+  <text x="256" y="300" text-anchor="middle"
+        font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-weight="800" font-size="200" letter-spacing="-8" fill="#ffffff">PT</text>
+</svg>

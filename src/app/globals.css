@@ -1,26 +1,31 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* App colours: use them in classes like bg-ink, text-brand, border-line */
+@theme {
+  --color-ink: #0a0a0a; /* main background */
+  --color-panel: #141414; /* cards / nav bar */
+  --color-line: #262626; /* thin borders */
+  --color-brand: #dc2626; /* red accent */
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* Space for the iPhone notch at the top and the nav bar + home bar at the bottom */
+@utility pt-safe {
+  padding-top: calc(env(safe-area-inset-top) + 1.5rem);
+}
+@utility pb-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 6rem);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
+  background: var(--color-ink);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
