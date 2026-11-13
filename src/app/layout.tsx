@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
-import BottomNav from "@/components/BottomNav";
+import { Suspense } from "react";
+import BottomNav, { NavBar } from "@/components/BottomNav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,8 +32,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${geistSans.variable} antialiased`}>
       <body className="min-h-dvh bg-ink text-white">
+        {/* Solid strip behind the iPhone status bar so content doesn't scroll under the clock */}
+        <div aria-hidden className="fixed inset-x-0 top-0 z-20 h-[env(safe-area-inset-top)] bg-ink" />
         <main className="mx-auto w-full max-w-md px-5 pt-safe pb-nav">{children}</main>
-        <BottomNav />
+        <Suspense fallback={<NavBar pathname={null} />}>
+          <BottomNav />
+        </Suspense>
       </body>
     </html>
   );

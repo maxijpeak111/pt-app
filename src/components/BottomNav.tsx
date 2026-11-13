@@ -19,13 +19,16 @@ const tabs = [
 ];
 
 export default function BottomNav() {
-  const pathname = usePathname();
+  return <NavBar pathname={usePathname()} />;
+}
 
+/** The bar itself. pathname is null in the brief placeholder shown before the page address is known. */
+export function NavBar({ pathname }: { pathname: string | null }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-panel/95 pb-safe backdrop-blur">
       <ul className="mx-auto flex max-w-md">
         {tabs.map((tab) => {
-          const active = pathname.startsWith(tab.href);
+          const active = pathname?.startsWith(tab.href) ?? false;
           return (
             <li key={tab.href} className="flex-1">
               <Link
