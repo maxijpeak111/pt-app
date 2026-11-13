@@ -18,7 +18,7 @@ home-screen web app on an iPhone. **Long-term it becomes a public app for other 
 
 - `index.html`, `style.css`, `manifest.webmanifest`, `sw.js` (network-first service worker), `icons/`, `media/`
 - `js/core.js` state, helpers, intensity maths, built-in stretches and exercises
-- `js/sessions.js`, `plan.js`, `recover.js`, `fuel.js`, `more.js` (progress/goals), `more2.js` (sleep, meditation, exercises), `more3.js` (your code, settings/backup), `app.js` (router)
+- `js/sessions.js`, `plan.js`, `recover.js`, `fuel.js`, `more.js` (progress/goals), `more2.js` (sleep, meditation, exercises), `more3.js` (your code, settings/backup), `import.js` (calendar import), `app.js` (router)
 - Adding a JS file: add it to `index.html` and to the `SHELL` list in `sw.js`; bump `V` in `sw.js` when caching changes.
 
 ## Rules
@@ -29,6 +29,14 @@ home-screen web app on an iPhone. **Long-term it becomes a public app for other 
 - Keep units and labels configurable where possible; data shapes should be able to carry a user id later.
 - Build DOM with `PT.h` (text is always text, never HTML) and `PT.fill` for replacing children.
 - Explain things to the owner in plain language.
+
+## Calendar import
+
+- Plan tab → Import calendar (also in More → Settings). Copies a prompt for any Claude chat with calendar/Notion access;
+  the user pastes the JSON reply back. Format: `{"ptImport":1,"days":[{date,shift,events,sessions,note}]}` (see `PT.IMPORT_PROMPT`).
+- Shifts replace that day's shift; imported events (`imported: true`) are replaced on re-import; hand-added events kept;
+  sessions matched to saved sessions by name (case-insensitive), skipped if already planned that day.
+- Plan days now have an `events` array: `{id, title, start, end, imported?}`.
 
 ## Status
 

@@ -39,7 +39,8 @@ function weekView() {
     days.map(dayCard),
     h('div', { class: 'row', style: { marginTop: '8px' } },
       h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.weekStart(PT.today()); PT.render(); } }, 'This week'),
-      h('button', { class: 'btn ghost small', onclick: copyShifts }, 'Copy last week’s shifts')));
+      h('button', { class: 'btn ghost small', onclick: copyShifts }, 'Copy last week’s shifts')),
+    h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => PT.importSheet() }, 'Import calendar'));
 }
 
 function dayCard(date) {
@@ -48,6 +49,7 @@ function dayCard(date) {
   return h('a', { class: 'card tap' + (date === PT.today() ? ' today' : ''), href: '#/plan/' + date },
     h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date))),
     day.shift ? h('span', { class: 'pill shift' }, 'Shift ' + day.shift.start + '–' + day.shift.end + (day.shift.label ? ' · ' + day.shift.label : '')) : h('span', { class: 'pill' }, 'No shift'),
+    (day.events || []).map(ev => h('span', { class: 'pill' }, PT.eventsText(ev))),
     items.map(it => { const s = PT.session(it.sessionId); return h('span', { class: 'pill ' + (it.logId ? 'done' : 'type') }, (s ? s.name : 'Deleted session') + ' · ' + it.intensity + (it.logId ? ' ✓' : '')); }),
     !items.length ? h('div', { class: 'muted small' }, 'Nothing planned') : null,
     (fuel.kcal || rec.sauna || rec.bike || rec.walk) ? h('div', { class: 'small muted', style: { marginTop: '4px' } },
@@ -82,6 +84,23 @@ function dayView(date) {
       h('div', { class: 'row' },
         h('button', { class: 'btn small grow', onclick: () => { ensureDay(date).shift = Object.assign({}, shift); PT.save(); PT.toast('Shift saved'); PT.render(); } }, day.shift ? 'Update shift' : 'Save shift'),
         day.shift ? h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).shift = null; PT.save(); PT.render(); } }, 'Clear') : null)));
+
+  // other calendar events
+  const evs = day.events || [], ne = { title: '', start: '', end: '' };
+  root.append(h('h2', {}, 'Calendar'),
+    evs.length ? h('div', {}, evs.map(ev => h('div', { class: 'card row between' }, h('div', {}, PT.eventsText(ev)),
+      h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).events = evs.filter(x => x.id !== ev.id); PT.save(); PT.render(); } }, 'Delete')))) : h('div', { class: 'empty' }, 'No other events. Import your calendar from the Plan tab, or add one here.'),
+    h('details', {}, h('summary', {}, '+ Add event'),
+      h('div', { class: 'card' },
+        PT.field('What', h('input', { placeholder: 'e.g. Physio, dinner with Aiden', oninput: e => ne.title = e.target.value })),
+        h('div', { class: 'grid2', style: { margin: '8px 0' } },
+          PT.field('Start (optional)', h('input', { type: 'time', oninput: e => ne.start = e.target.value })),
+          PT.field('End (optional)', h('input', { type: 'time', oninput: e => ne.end = e.target.value }))),
+        h('button', { class: 'btn small block', onclick: () => {
+          if (!ne.title.trim()) { PT.toast('Write what it is first'); return; }
+          const d = ensureDay(date); d.events = (d.events || []).concat({ id: PT.uid(), title: ne.title.trim(), start: ne.start, end: ne.end });
+          d.events.sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1); PT.save(); PT.render();
+        } }, 'Add event'))));
 
   // sessions
   root.append(h('h2', {}, day.items.length > 1 ? 'Combined day · ' + day.items.length + ' sessions' : 'Sessions'));
