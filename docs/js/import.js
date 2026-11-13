@@ -26,7 +26,7 @@ PT.IMPORT_PROMPT = [
   '- One entry per date, dates as YYYY-MM-DD, times as 24-hour HH:MM.',
   '- "shift" is my paid work shift only (null if I am not working). Only one shift per day.',
   '- "events" is everything else in the calendar that day (appointments, social plans). Leave out all-day events unless they matter; give them no start or end.',
-  '- "sessions" is only training I have planned in the calendar. Use the session name as written there. Intensity 1-10, default 7. Leave it empty if unsure.',
+  '- "sessions" is only training I have planned in the calendar. Use the session name as written there. Add "intensity" (1-10) only if the calendar says how hard; otherwise leave it out and my saved levels are used.',
   '- Leave out anything you are not sure about rather than guessing.'
 ].join('\n');
 
@@ -74,7 +74,7 @@ function normalise(obj) {
     });
     (Array.isArray(d.sessions) ? d.sessions : []).forEach(se => {
       const name = str(typeof se === 'string' ? se : se && se.name, 80); if (!name) return;
-      let i2 = Math.round(+((se && se.intensity) || 7)); if (!(i2 >= 1 && i2 <= 10)) i2 = 7;
+      let i2 = se && se.intensity != null ? Math.round(+se.intensity) : null; if (!(i2 >= 1 && i2 <= 10)) i2 = null;
       out.sessions.push({ name, intensity: i2 });
     });
     const note = str(d.note, 1000); if (note) out.note = out.note ? out.note + '\n' + note : note;
@@ -103,7 +103,9 @@ function apply(days) {
       const s = findSession(se.name);
       if (!s) { r.unknown.add(se.name); return; }
       if (day.items.some(it => it.sessionId === s.id)) return; // already planned that day
-      day.items.push({ id: PT.uid(), sessionId: s.id, intensity: se.intensity, logId: null }); r.sessions++;
+      const item = { id: PT.uid(), sessionId: s.id, intensity: se.intensity || PT.itemLevel(null, s), logId: null };
+      if (se.intensity) { item.levels = {}; s.exercises.forEach(e => item.levels[e.id] = se.intensity); }
+      day.items.push(item); r.sessions++;
     });
     if (d.note && !(day.note || '').includes(d.note)) day.note = day.note ? day.note + '\n' + d.note : d.note;
   });

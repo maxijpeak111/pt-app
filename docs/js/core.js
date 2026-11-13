@@ -21,7 +21,7 @@ const KEY = 'pt.v1';
 function defaults() {
   return {
     v: 1, seeded: false,
-    settings: { minPct: 60, maxPct: 110, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, ownOnly: false },
+    settings: { minPct: 60, maxPct: 110, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], recoveryLog: {},
     foods: [], meals: [], foodLog: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -161,15 +161,23 @@ PT.spark = points => {
 PT.back = (href, label) => h('a', { class: 'back', href }, '‹ ' + (label || 'Back'));
 
 /* ---------- sessions, intensity ---------- */
-PT.TYPES = [['strength', 'Strength'], ['run', 'Run'], ['swim', 'Swim'], ['mma', 'MMA'], ['other', 'Other']];
+PT.TYPES = [['strength', 'Strength'], ['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike'], ['mma', 'MMA'], ['other', 'Mixed']];
 PT.typeLabel = t => (PT.TYPES.find(x => x[0] === t) || [0, 'Other'])[1];
-PT.TAGS = [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core'], ['run', 'Running'], ['swim', 'Swimming'], ['mma', 'MMA'], ['full', 'Full body']];
+PT.TAGS = [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core'], ['run', 'Running'], ['swim', 'Swimming'], ['bike', 'Cycling'], ['mma', 'MMA'], ['full', 'Full body']];
+/* Folders for browsing exercises when building a session. Each folder shows library exercises with that tag. */
+PT.FOLDERS = [
+  ['Strength', [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core'], ['full', 'Full body']]],
+  ['Cardio', [['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike']]],
+  ['Combat', [['mma', 'MMA']]]
+];
+PT.KINDS = [['strength', 'Sets × reps × kg'], ['cardio', 'Distance + time'], ['time', 'Time / rounds']];
 PT.tagLabel = t => (PT.TAGS.find(x => x[0] === t) || [0, t])[1];
-PT.defaultTags = { strength: [], run: ['run', 'legs'], swim: ['swim', 'shoulders', 'back'], mma: ['mma', 'full'], other: [] };
+PT.defaultTags = { strength: [], run: ['run', 'legs'], swim: ['swim', 'shoulders', 'back'], bike: ['bike', 'legs'], mma: ['mma', 'full'], other: [] };
 PT.defaultKind = t => (t === 'run' || t === 'swim') ? 'cardio' : 'strength';
 PT.defaultUnit = t => t === 'swim' ? 'm' : 'km';
 PT.newEx = type => ({ id: PT.uid(), name: '', kind: PT.defaultKind(type), sets: 3, reps: 10, kg: '', distance: '', unit: PT.defaultUnit(type), pace: 0, time: 0, notes: '' });
 PT.exText = ex => {
+  if (ex.kind === 'time') return [+ex.rounds ? ex.rounds + ' rounds' : null, +ex.time ? PT.fmtDur(ex.time) + (+ex.rounds ? ' each' : '') : null].filter(Boolean).join(' × ') || '—';
   if (ex.kind === 'cardio') {
     const p = [];
     if (+ex.distance) p.push(ex.distance + ' ' + ex.unit);
@@ -196,10 +204,48 @@ PT.scaleEx = (ex, i) => {
 };
 PT.session = id => PT.state.sessions.find(x => x.id === id);
 
+/* ---------- your own range per exercise: warm-up (level 1) to max (level 10) ---------- */
+PT.libEx = ex => ex && ((ex.exId && PT.state.exercises.find(x => x.id === ex.exId)) ||
+  (ex.name && PT.state.exercises.find(x => x.name.trim().toLowerCase() === String(ex.name).trim().toLowerCase())));
+PT.hasRange = lib => !!(lib && lib.range && lib.range.min && lib.range.max);
+const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
+PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
+// What to do at a given level, worked out from your range. Returns the same shape the logger uses.
+PT.atLevel = (lib, level) => {
+  const t = (Math.min(10, Math.max(1, +level || 1)) - 1) / 9, mn = lib.range.min, mx = lib.range.max;
+  const o = { id: PT.uid(), exId: lib.id, name: lib.name, kind: lib.kind || 'strength', sport: PT.sportOf(lib), sets: '', reps: '', kg: '', distance: '', unit: lib.unit || 'km', pace: 0, time: 0, rounds: '', notes: '' };
+  if (o.kind === 'strength') {
+    o.sets = Math.round(lerp(mn.sets, mx.sets, t)); o.reps = Math.round(lerp(mn.reps, mx.reps, t));
+    const kg = lerp(mn.kg, mx.kg, t); o.kg = kg ? Math.round(kg / 2.5) * 2.5 : '';
+  } else if (o.kind === 'cardio') {
+    const d = lerp(mn.distance, mx.distance, t);
+    o.distance = d ? (o.unit === 'm' ? Math.round(d / 25) * 25 : Math.round(d * 10) / 10) : '';
+    const tm = lerp(mn.time, mx.time, t); o.time = tm ? Math.round(tm / 5) * 5 : 0;
+    if (+o.distance && o.time) o.pace = Math.round(o.time / (o.unit === 'm' ? o.distance / 100 : o.distance));
+  } else {
+    o.rounds = Math.round(lerp(mn.rounds, mx.rounds, t)) || '';
+    const tm = lerp(mn.time, mx.time, t); o.time = tm ? Math.round(tm / 5) * 5 : 0;
+  }
+  return o;
+};
+// Target for an exercise in a session at a level: uses your range if set, otherwise scales what was written.
+PT.target = (ex, level) => {
+  const lib = PT.libEx(ex);
+  if (PT.hasRange(lib)) { const o = PT.atLevel(lib, level); o.id = ex.id; return o; }
+  const o = PT.scaleEx(ex, level); o.sport = o.sport || PT.sportOf(lib); return o;
+};
+// Level for one exercise on a planned day (your per-day change, else the level saved in the session).
+PT.levelOf = (item, ex) => (item && item.levels && item.levels[ex.id]) || ex.level || (item && item.intensity) || 7;
+PT.itemLevel = (item, s) => {
+  if (!s || !s.exercises.length) return (item && item.intensity) || 7;
+  return Math.round(s.exercises.reduce((a, e) => a + PT.levelOf(item, e), 0) / s.exercises.length);
+};
+
 /* ---------- nutrition maths ---------- */
-PT.macrosOf = (food, g) => ({ kcal: food.kcal * g / 100, p: food.p * g / 100, c: food.c * g / 100, f: food.f * g / 100 });
+// Food macros are stored for one usual portion; qty is how many portions (0.5, 1, 2…).
+PT.macrosOf = (food, qty) => ({ kcal: food.kcal * qty, p: food.p * qty, c: food.c * qty, f: food.f * qty });
 PT.sumMacros = list => list.reduce((a, m) => ({ kcal: a.kcal + (+m.kcal || 0), p: a.p + (+m.p || 0), c: a.c + (+m.c || 0), f: a.f + (+m.f || 0) }), { kcal: 0, p: 0, c: 0, f: 0 });
-PT.mealTotals = meal => PT.sumMacros(meal.items.map(it => { const f = PT.state.foods.find(x => x.id === it.foodId); return f ? PT.macrosOf(f, it.grams) : { kcal: 0, p: 0, c: 0, f: 0 }; }));
+PT.mealTotals = meal => PT.sumMacros(meal.items.map(it => { const f = PT.state.foods.find(x => x.id === it.foodId); return f ? PT.macrosOf(f, +it.qty || 0) : { kcal: 0, p: 0, c: 0, f: 0 }; }));
 PT.r1 = n => Math.round(n * 10) / 10;
 
 /* ---------- built-in stretch library (general guidance; skip anything that hurts) ---------- */
@@ -253,10 +299,37 @@ PT.SEED_EXERCISES = [
   ["Farmer's carry", ['full', 'core'], 'Tall posture, short quick steps, grip hard.'],
   ['Kettlebell swing', ['legs', 'back', 'full'], 'Hinge, not squat. Snap the hips, arms just guide.']
 ];
+PT.SEED_EXTRA = [
+  ['Easy run', ['run', 'legs'], 'cardio', 'km', 'Conversational pace.'],
+  ['Tempo run', ['run', 'legs'], 'cardio', 'km', 'Comfortably hard, steady.'],
+  ['Fartlek', ['run', 'legs'], 'cardio', 'km', 'Mix fast and easy bursts by feel.'],
+  ['Long run', ['run', 'legs'], 'cardio', 'km', 'Slow and steady, build time on feet.'],
+  ['Freestyle swim', ['swim', 'shoulders', 'back'], 'cardio', 'm', 'Long strokes, relaxed breathing.'],
+  ['Swim intervals', ['swim', 'shoulders', 'back'], 'cardio', 'm', 'Fast reps with short rests.'],
+  ['Bike ride', ['bike', 'legs'], 'cardio', 'km', ''],
+  ['Bag work', ['mma', 'full'], 'time', '', 'Rounds on the heavy bag.'],
+  ['Pad work', ['mma', 'full'], 'time', '', ''],
+  ['Shadow boxing', ['mma', 'full'], 'time', '', 'Footwork, head movement, clean technique.'],
+  ['Grappling / rolling', ['mma', 'full', 'core'], 'time', '', ''],
+  ['Sparring', ['mma', 'full'], 'time', '', ''],
+  ['Skipping', ['mma', 'legs', 'full'], 'time', '', '']
+];
 if (!PT.state.seeded) {
   if (!PT.state.exercises.length) PT.state.exercises = PT.SEED_EXERCISES.map(([name, muscles, notes]) => ({ id: PT.uid(), name, muscles, notes, link: '' }));
   PT.state.seeded = true; PT.save();
 }
+/* Upgrade older saved data (v1) to the current shape. Nothing is deleted. */
+PT.migrate = function () {
+  const st = PT.state; if ((st.v || 1) >= 2) return;
+  st.exercises.forEach(e => { if (!e.kind) e.kind = 'strength'; });
+  const have = new Set(st.exercises.map(e => e.name.toLowerCase()));
+  PT.SEED_EXTRA.forEach(([name, muscles, kind, unit, notes]) => { if (!have.has(name.toLowerCase())) st.exercises.push({ id: PT.uid(), name, muscles, kind, unit, notes, link: '' }); });
+  // foods were per 100 g; they become "per portion" where one portion = 100 g, so the numbers still match
+  st.foods.forEach(f => { if (f.portionG == null) { f.portionG = 100; f.group = f.group || 'other'; } });
+  st.meals.forEach(m => { m.items = (m.items || []).map(it => it.qty != null ? it : { foodId: it.foodId, qty: (+it.grams || 0) / 100 }); });
+  st.v = 2; PT.save();
+};
+PT.migrate();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {

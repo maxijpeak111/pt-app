@@ -1,5 +1,5 @@
 // Network first, so updates show up as soon as you're online; cached copy is the offline fallback.
-const V = 'pt-v2';
+const V = 'pt-v3';
 const SHELL = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'js/core.js', 'js/sessions.js', 'js/plan.js', 'js/recover.js', 'js/fuel.js', 'js/more.js', 'js/more2.js', 'js/more3.js', 'js/import.js', 'js/app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

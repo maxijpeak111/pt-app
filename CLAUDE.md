@@ -30,6 +30,20 @@ home-screen web app on an iPhone. **Long-term it becomes a public app for other 
 - Build DOM with `PT.h` (text is always text, never HTML) and `PT.fill` for replacing children.
 - Explain things to the owner in plain language.
 
+## Exercise levels, folders, meals (v2 data)
+
+- Each library exercise can have `kind` (strength | cardio | time), `unit`, and `range: {min, max}` = the owner's own
+  level 1 (warm-up) and level 10 (max). `PT.atLevel(lib, level)` interpolates; `PT.target(ex, level)` falls back to
+  `PT.scaleEx` (global % range) for exercises with no range. First use of an exercise asks for the range.
+- Session exercises: `{id, exId, name, kind, level}`. Planned items can override per exercise: `item.levels[exId]`;
+  `PT.levelOf`, `PT.itemLevel` (average). Sessions are built from folders (`PT.FOLDERS`, by tag) via `PT.browseSheet`;
+  a whole saved session can be stacked in. Type and tags are derived from the exercises.
+- Foods are per usual portion (`portion` label, optional `portionG`, macros for that portion); meals/plates use `qty`
+  in portions. Add meal = slot → stack foods from groups (`PT.FOOD_GROUPS`) and usual meals → optional save as usual meal.
+- Calorie target: rest-day targets + `settings.hardKcal`; `PT.dayLoad` (0–10 from planned levels) scales extra kcal,
+  which goes to carbs (`PT.dayTargets`).
+- `PT.migrate()` upgrades v1 data (foods per 100 g → portion of 100 g; meal grams → qty) and runs on restore too.
+
 ## Calendar import
 
 - Plan tab → Import calendar (also in More → Settings). Copies a prompt for any Claude chat with calendar/Notion access;

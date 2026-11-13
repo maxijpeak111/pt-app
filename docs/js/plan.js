@@ -115,10 +115,10 @@ function dayView(date) {
     PT.activityBlock(date));
 
   // fuel
-  const f = PT.dayFuel(date), t = PT.state.settings.targets;
+  const f = PT.dayFuel(date), t = PT.dayTargets(date);
   root.append(h('h2', {}, 'Fuel'),
     h('a', { class: 'card tap', href: '#/fuel/' + date },
-      h('div', { class: 'row between' }, h('div', { class: 'stat' }, Math.round(f.kcal) + (+t.kcal ? ' / ' + t.kcal : '') + ' kcal'), h('span', { class: 'red' }, '›')),
+      h('div', { class: 'row between' }, h('div', { class: 'stat' }, Math.round(f.kcal) + (t.kcal ? ' / ' + t.kcal : '') + ' kcal'), h('span', { class: 'red' }, '›')),
       h('div', { class: 'small muted' }, 'P ' + Math.round(f.p) + 'g · C ' + Math.round(f.c) + 'g · F ' + Math.round(f.f) + 'g')));
 
   // note
@@ -132,19 +132,31 @@ function itemCard(date, it) {
   if (!s) return h('div', { class: 'card' }, h('p', {}, 'This session was deleted.'),
     h('button', { class: 'btn danger small', onclick: () => removeItem(date, it) }, 'Remove'));
   const label = h('span', { class: 'red', style: { fontWeight: '800' } });
-  const list = h('ul', { class: 'plain' });
+  const list = h('div', {});
+  const clamp = v => Math.min(10, Math.max(1, v));
+  const persist = () => { it.intensity = PT.itemLevel(it, s); PT.save(); };
+  function setLv(e, v) { it.levels = Object.assign({}, it.levels || {}); it.levels[e.id] = clamp(v); persist(); refresh(); }
   function refresh() {
-    label.textContent = 'Intensity ' + it.intensity + '/10 · ' + PT.pct(it.intensity) + '% of base';
-    list.replaceChildren(...s.exercises.map(e => { const x = PT.scaleEx(e, it.intensity); return h('li', {}, h('b', {}, e.name), ' · ', PT.exText(x)); }));
+    label.textContent = 'Day level ' + PT.itemLevel(it, s) + '/10';
+    PT.fill(list, s.exercises.map(e => {
+      const lv = PT.levelOf(it, e);
+      return h('div', { class: 'stepper' },
+        h('button', { class: 'btn ghost small', onclick: () => setLv(e, lv - 1) }, '−'),
+        h('div', { class: 'grow' }, h('b', {}, e.name), h('span', { class: 'red small' }, '  L' + lv), h('div', { class: 'small' }, PT.exText(PT.target(e, lv)))),
+        h('button', { class: 'btn ghost small', onclick: () => setLv(e, lv + 1) }, '+'));
+    }));
   }
-  const slider = h('input', { type: 'range', min: 1, max: 10, step: 1, value: it.intensity });
-  slider.addEventListener('input', () => { it.intensity = +slider.value; refresh(); });
-  slider.addEventListener('change', () => { ensureDay(date).items.find(x => x.id === it.id).intensity = it.intensity; PT.save(); });
+  const slider = h('input', { type: 'range', min: 1, max: 10, step: 1, value: PT.itemLevel(it, s) });
+  slider.addEventListener('input', () => { label.textContent = 'Set everything to level ' + slider.value; });
+  slider.addEventListener('change', () => {
+    it.levels = {}; s.exercises.forEach(e => it.levels[e.id] = +slider.value); persist(); refresh();
+  });
   refresh();
   return h('div', { class: 'card' },
     h('div', { class: 'row between' }, h('h3', {}, s.name), h('span', { class: 'pill type' }, PT.typeLabel(s.type))),
-    h('div', { style: { marginTop: '8px' } }, label, slider),
-    h('details', {}, h('summary', {}, 'Planned exercises (' + s.exercises.length + ')'), list),
+    h('div', { style: { marginTop: '8px' } }, label, slider,
+      h('div', { class: 'row between small muted' }, h('span', {}, 'Easy day'), h('span', {}, 'Feeling strong'))),
+    h('details', {}, h('summary', {}, 'Adjust each exercise (' + s.exercises.length + ')'), list),
     h('div', { class: 'row', style: { marginTop: '10px' } },
       h('a', { class: 'btn small grow', href: '#/log/' + date + '/' + it.id }, it.logId ? 'Edit log ✓' : 'Log this session'),
       h('button', { class: 'btn danger small', onclick: () => removeItem(date, it) }, 'Remove')));
@@ -164,7 +176,7 @@ function addSheet(date) {
   const sh = PT.sheet('Add to ' + PT.niceDate(date), h('div', {},
     h('p', { class: 'muted small' }, 'Tap to add. Add two or more for a combined day (e.g. weights + swim).'),
     PT.state.sessions.map(s => h('div', { class: 'card tap', onclick: () => {
-      ensureDay(date).items.push({ id: PT.uid(), sessionId: s.id, intensity: 7, logId: null });
+      ensureDay(date).items.push({ id: PT.uid(), sessionId: s.id, intensity: PT.itemLevel(null, s), logId: null });
       PT.save(); PT.toast('Added ' + s.name); PT.render();
     } }, h('div', { class: 'row between' }, h('b', {}, s.name), h('span', { class: 'pill' }, PT.typeLabel(s.type)))
     )),
@@ -178,12 +190,16 @@ function logView(date, itemId) {
   const s = it && PT.session(it.sessionId);
   if (!it || !s) return h('div', {}, PT.back('#/plan/' + date), h('div', { class: 'empty' }, 'That session could not be found.'));
   const existing = it.logId && PT.state.logs.find(l => l.id === it.logId);
-  const rows = existing ? JSON.parse(JSON.stringify(existing.exercises)) : s.exercises.map(e => PT.scaleEx(e, it.intensity));
+  const rows = existing ? JSON.parse(JSON.stringify(existing.exercises)) : s.exercises.map(e => PT.target(e, PT.levelOf(it, e)));
   const meta = { rpe: existing ? existing.rpe : '', notes: existing ? existing.notes : '' };
   const root = h('div', {}, PT.back('#/plan/' + date), h('h1', {}, 'Log: ' + s.name),
-    h('p', { class: 'muted small' }, 'Prefilled with today’s targets at intensity ' + it.intensity + '. Change anything you did differently.'));
+    h('p', { class: 'muted small' }, 'Prefilled with today’s targets from your levels. Change anything you did differently.'));
   rows.forEach(ex => {
-    const fields = ex.kind === 'cardio'
+    const fields = ex.kind === 'time'
+      ? h('div', { class: 'grid2' },
+          PT.field('Rounds', PT.numInput(ex.rounds, v => ex.rounds = v, '', '1')),
+          PT.field('Time per round', PT.durInput(ex.time, v => ex.time = v)))
+      : ex.kind === 'cardio'
       ? h('div', { class: 'grid3' },
           PT.field('Distance (' + ex.unit + ')', PT.numInput(ex.distance, v => ex.distance = v)),
           PT.field('Time', PT.durInput(ex.time, v => ex.time = v, 'h:mm:ss')),
@@ -206,7 +222,7 @@ function logView(date, itemId) {
         if (!+ex.time && +ex.pace) ex.time = Math.round(ex.pace * per);
       }
     });
-    const entry = { id: existing ? existing.id : PT.uid(), date, sessionId: s.id, name: s.name, type: s.type, intensity: it.intensity, rpe: meta.rpe, notes: meta.notes, exercises: rows };
+    const entry = { id: existing ? existing.id : PT.uid(), date, sessionId: s.id, name: s.name, type: s.type, intensity: PT.itemLevel(it, s), rpe: meta.rpe, notes: meta.notes, exercises: rows };
     if (existing) PT.state.logs[PT.state.logs.findIndex(l => l.id === existing.id)] = entry; else PT.state.logs.push(entry);
     it.logId = entry.id; PT.save(); PT.toast('Logged'); location.hash = '#/plan/' + date;
   } }, existing ? 'Save changes' : 'Save log'));

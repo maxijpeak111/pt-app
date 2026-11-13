@@ -52,7 +52,7 @@ PT.moreViews.progress = function () {
   for (let k = 0; k < 8; k++) { weeks.unshift(w); w = PT.addDays(w, -7); }
   const inWeek = (d, ws) => d >= ws && d < PT.addDays(ws, 7);
   const counts = weeks.map(ws => s.logs.filter(l => inWeek(l.date, ws)).length);
-  const runKm = weeks.map(ws => PT.r1(s.logs.filter(l => l.type === 'run' && inWeek(l.date, ws)).reduce((a, l) => a + l.exercises.reduce((b, e) => b + (e.kind === 'cardio' && e.unit === 'km' ? +e.distance || 0 : 0), 0), 0)));
+  const runKm = weeks.map(ws => PT.r1(s.logs.filter(l => inWeek(l.date, ws)).reduce((a, l) => a + l.exercises.reduce((b, e) => b + (e.kind === 'cardio' && e.unit === 'km' && (e.sport === 'run' || (!e.sport && l.type === 'run')) ? +e.distance || 0 : 0), 0), 0)));
   const labels = weeks.map(x => String(PT.parse(x).getDate()));
   root.append(h('h2', {}, 'Sessions per week'), h('div', { class: 'card' }, PT.bars(counts, labels, 'Last 8 weeks (week starting on that date). ' + s.logs.length + ' sessions logged in total.')),
     h('h2', {}, 'Run distance per week (km)'), h('div', { class: 'card' }, PT.bars(runKm, labels, 'Highest week: ' + Math.max(0, ...runKm) + ' km')));

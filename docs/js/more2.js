@@ -89,12 +89,12 @@ PT.moreViews.exercises = function (parts) {
     const rows = s.exercises.filter(e => e.name.toLowerCase().includes(q.v.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
     list.replaceChildren(...(rows.length ? rows.map(e => h('a', { class: 'card tap', href: '#/more/exercises/' + e.id },
       h('div', { class: 'row between' }, h('b', {}, e.name), e.link ? h('span', { class: 'pill done' }, 'media') : null),
-      h('div', { class: 'small muted' }, e.muscles.map(PT.tagLabel).join(', ')))) : [h('div', { class: 'empty' }, 'No matches.')]));
+      h('div', { class: 'small muted' }, e.muscles.map(PT.tagLabel).join(', ') + (PT.hasRange(e) ? ' · range set' : '')))) : [h('div', { class: 'empty' }, 'No matches.')]));
   };
   draw();
   return h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Exercises'),
     h('div', { class: 'row', style: { marginBottom: '12px', flexWrap: 'nowrap' } }, h('input', { placeholder: 'Search', oninput: e => { q.v = e.target.value; draw(); } }),
-      h('button', { class: 'btn small', onclick: () => { const e = { id: PT.uid(), name: '', muscles: [], notes: '', link: '' }; s.exercises.push(e); PT.save(); location.hash = '#/more/exercises/' + e.id; } }, '+ New')),
+      h('button', { class: 'btn small', onclick: () => { const e = { id: PT.uid(), name: '', muscles: [], kind: 'strength', notes: '', link: '' }; s.exercises.push(e); PT.save(); location.hash = '#/more/exercises/' + e.id; } }, '+ New')),
     list);
 };
 function exDetail(id) {
@@ -111,7 +111,12 @@ function exDetail(id) {
   drawMedia();
   return h('div', {}, PT.back('#/more/exercises', 'Exercises'), h('h1', {}, e.name || 'New exercise'),
     PT.field('Name', h('input', { value: e.name, oninput: ev => e.name = ev.target.value, onchange: () => PT.save() })), gap(10),
-    h('label', { class: 'f' }, 'Muscles / focus'), PT.chips(PT.TAGS, e.muscles, () => PT.save()),
+    h('label', { class: 'f' }, 'Folders (muscles / sport)'), PT.chips(PT.TAGS, e.muscles, () => PT.save()), gap(10),
+    h('h2', {}, 'Your range'),
+    h('div', { class: 'card' },
+      PT.hasRange(e) ? [h('div', {}, h('span', { class: 'muted small' }, 'Level 1  '), PT.exText(PT.atLevel(e, 1))), h('div', {}, h('span', { class: 'muted small' }, 'Level 5  '), PT.exText(PT.atLevel(e, 5))), h('div', {}, h('span', { class: 'red small' }, 'Level 10  '), PT.exText(PT.atLevel(e, 10)))]
+        : h('div', { class: 'small muted' }, 'Not set yet. You will be asked the first time you add it to a session.'),
+      gap(8), h('button', { class: 'btn ghost small block', onclick: () => { const box = h('div', {}); const sh = PT.sheet('Your range: ' + (e.name || 'exercise'), box); PT.rangeForm(box, e, () => { sh.close(); PT.render(); }); } }, PT.hasRange(e) ? 'Change my range' : 'Set my range')), gap(10),
     PT.field('Technique notes', h('textarea', { value: e.notes || '', oninput: ev => e.notes = ev.target.value, onchange: () => PT.save() })), gap(10),
     PT.field('Demo video or image link', h('input', { value: e.link || '', placeholder: 'https://… or media/squat.mp4', oninput: ev => e.link = ev.target.value, onchange: () => { PT.save(); drawMedia(); } })),
     h('p', { class: 'small muted' }, 'Paste a link, or add your own video file to the docs/media folder on GitHub and use media/yourfile.mp4.'),
