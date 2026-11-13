@@ -1,84 +1,38 @@
-# PT App — Project Plan
-
-@AGENTS.md
+# PT App — Project Notes
 
 ## What this is
 
-A personal training app for the owner, a trainee personal trainer, used mainly as an
-installable web app on their iPhone. **Long-term it will become a public app for other people**,
-so everything should be built to be adapted for different users later.
+A personal training app for the owner (a beginner coder and trainee personal trainer), used as a
+home-screen web app on an iPhone. **Long-term it becomes a public app for other people**, so keep it adaptable.
 
-## About the owner
+## How it works now (static app, no servers)
 
-- Complete beginner at coding. Explain changes in plain language, avoid jargon, and always say
-  exactly what to open or run to see the result.
+- Plain HTML, CSS and vanilla JavaScript in `docs/`. No build step, no framework, no backend.
+- Hosted free by GitHub Pages from the `docs/` folder on `main`: https://maxijpeak111.github.io/pt-app/
+- All user data lives on the phone only (localStorage key `pt.v1`). Backup/restore is in More → Settings.
+- Installed from Safari: Share → Add to Home Screen.
+- Publishing = commit and push to `main`; Pages redeploys in about a minute. Claude can do this from chat.
+- The old Next.js app (`src/`, `package.json`, etc.) is legacy and not used; Pages only serves `docs/`.
 
-## Design rules
+## Files (`docs/`)
 
-- Dark, sleek, serious, simple and efficient. Mobile-first (iPhone).
-- Colours: red, black and white only (tokens in `src/app/globals.css`: `ink`, `panel`, `line`, `brand`).
-- Bold uppercase headings, minimal decoration, big tap targets, few taps to log anything.
-- Respect iPhone safe areas (notch / home bar); the app is installed to the home screen as "PT".
+- `index.html`, `style.css`, `manifest.webmanifest`, `sw.js` (network-first service worker), `icons/`, `media/`
+- `js/core.js` state, helpers, intensity maths, built-in stretches and exercises
+- `js/sessions.js`, `plan.js`, `recover.js`, `fuel.js`, `more.js` (progress/goals), `more2.js` (sleep, meditation, exercises), `more3.js` (your code, settings/backup), `app.js` (router)
+- Adding a JS file: add it to `index.html` and to the `SHELL` list in `sw.js`; bump `V` in `sw.js` when caching changes.
 
-## Tech stack
+## Rules
 
-- Next.js (App Router, `src/` folder) + TypeScript + Tailwind CSS v4.
-- Installable web app: `src/app/manifest.ts`, icons generated from `scripts/icon.svg` via `npm run icons`.
-- **No database yet.** Don't add one until a feature needs it, and discuss the choice first.
-- Run locally with `npm run dev -- --hostname 0.0.0.0` (port 3000) so the iPhone can reach it on Wi-Fi.
+- Design: dark, sleek, serious; red, black, white. Big tap targets, few taps to log. Respect iPhone safe areas.
+- Use relative paths only (the site lives under `/pt-app/`).
+- Never hard-code the owner's personal data (goals, shifts, quotes, targets). It is user data.
+- Keep units and labels configurable where possible; data shapes should be able to carry a user id later.
+- Build DOM with `PT.h` (text is always text, never HTML) and `PT.fill` for replacing children.
+- Explain things to the owner in plain language.
 
-## Build for future multi-user use
+## Status
 
-- Never hard-code the owner's personal data (goals, min/max loads, shifts, quotes, targets) in
-  components. Keep it as user data/settings that could belong to any user.
-- Give data records a clear shape (TypeScript types in one place) that could later carry a `userId`.
-- Keep data access behind small helper functions so storage can be swapped (local → database) later.
-- Use units and labels that could later be made configurable (kg/lb, km/mi).
-
-## How the code is organised
-
-- Data types and storage live in `src/lib/<feature>/` (e.g. `src/lib/sessions/types.ts`, `storage.ts`).
-  Storage is browser localStorage for now (key `pt.sessionTemplates.v1`); only `storage.ts` touches it.
-- Times (pace, duration) are stored as **seconds**; typed as digits only with colons auto-inserted
-  (`src/lib/duration.ts`, `DurationField`), since the iPhone number pad has no colon.
-- Reusable inputs are in `src/components/ui/fields.tsx`; inputs use 16px text so iPhone doesn't zoom.
-- `cacheComponents` is on: anything reading the URL (`usePathname`, dynamic `params`) must sit
-  inside `<Suspense>`, and nothing may read the clock / random during server prerender.
-- Ids come from `src/lib/id.ts` (`crypto.randomUUID` isn't available over plain http on the phone).
-
-## Feature roadmap (build in this order)
-
-1. **Session builder** — reusable session templates of type strength, run, swim, MMA or other,
-   each with exercises. Strength logs sets, reps and weight. Cardio logs distance, pace and time.
-   Templates can be combined (e.g. chest session + a run).
-2. **Weekly planner** — calendar-style week view; drop sessions into days and add work shifts,
-   which change week to week.
-3. **Intensity slider** — 1 to 10 per session, scaling load or duration between the user's own
-   minimum and maximum.
-4. **Logging & progress** — log completed sessions and see progress against goals (e.g. marathon
-   distance, triathlete status, full-body strength, martial arts improvement).
-5. **Recovery** — stretches matched to the session or combined sessions, plus sauna, bike and walking.
-6. **Nutrition** — enter foods and their macros, build meals by weight, see daily totals against
-   targets the user sets.
-7. **Sleep & meditation tracking.**
-8. **Exercise demos** — videos or images for exercises.
-9. **Motivation area** — the user's own quotes and philosophy.
-
-## Current status
-
-- [x] Project setup: Next.js + Tailwind, dark theme, bottom nav (Planner / Sessions) with
-      placeholder screens, home-screen install (manifest + icons), git.
-- [x] 1. Session builder (templates: create / edit / delete; exercises are strength or cardio).
-      Combining templates is not built yet — do it with the weekly planner.
-- [ ] 2. Weekly planner ← next up
-- [ ] 3. Intensity slider
-- [ ] 4. Logging & progress
-- [ ] 5. Recovery
-- [ ] 6. Nutrition
-- [ ] 7. Sleep & meditation
-- [ ] 8. Exercise demos
-- [ ] 9. Motivation area
-
-## Keep this file updated
-
-After each feature or important decision, update "Current status" and any rules above.
+All planned features are built: session builder and merge, weekly planner with shifts, intensity slider,
+logging, goals/progress, recovery (stretches, sauna/bike/walk), nutrition, sleep, meditation,
+exercise library with demo links, personal quotes/principles, backup.
+Not yet checked on a real phone. Ideas for later: barcode scanning, accounts and sync for a public version.
