@@ -138,6 +138,7 @@ PT.moreViews.settings = function () {
         h('button', { class: 'btn ghost small grow', onclick: () => PT.copyBackup().then(() => PT.render()) }, 'Copy text')),
       h('div', { class: 'small muted', style: { marginTop: '8px' } }, PT.daysSinceBackup() == null ? 'No backup made yet.' : 'Last backup: ' + PT.niceDate(PT.state.settings.lastBackup) + (PT.daysSinceBackup() ? ' (' + PT.daysSinceBackup() + ' days ago)' : ' (today)') + '. On iPhone, choose Save to Files, then iCloud Drive.'),
       gap(8), h('button', { class: 'btn ghost small block', onclick: restoreSheet }, 'Restore from backup')),
+    h('p', { class: 'small muted' }, 'App version ' + PT.APP_VERSION),
     h('h2', {}, 'Danger zone'),
     h('button', { class: 'btn danger block', onclick: () => PT.confirm('Erase ALL data in the app? This cannot be undone. Make a backup first if unsure.', 'Erase everything', () => { try { localStorage.removeItem('pt.v1'); } catch (e) { /* ignore */ } location.hash = '#/plan'; location.reload(); }) }, 'Erase all data'))
 };

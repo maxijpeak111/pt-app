@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -255,6 +255,16 @@ PT.libEx = ex => ex && ((ex.exId && PT.state.exercises.find(x => x.id === ex.exI
 PT.hasRange = lib => !!(lib && lib.range && lib.range.min && lib.range.max);
 const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
+// Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
+// saved outside the Run folder, like "Treadmill", still counts as a run.
+PT.APP_VERSION = 10;
+PT.entrySport = en => {
+  if (en.kind === 'laps') return 'swim';
+  if (en.kind !== 'cardio') return '';
+  const s = PT.sportOf(PT.libEx(en)) || en.sport; if (s) return s;
+  const n = String(en.name || '').toLowerCase();
+  return /swim|pool|lap/.test(n) ? 'swim' : /bike|cycl|ride|spin|peloton/.test(n) ? 'bike' : /run|jog|treadmill|sprint|5k|10k|marathon|parkrun|tempo|fartlek/.test(n) ? 'run' : '';
+};
 // What to do at a given level, worked out from your range. Returns the same shape the logger uses.
 PT.atLevel = (lib, level) => {
   const t = (Math.min(10, Math.max(1, +level || 1)) - 1) / 9, mn = lib.range.min, mx = lib.range.max;
@@ -343,7 +353,7 @@ PT.daySessions = date => {
   const out = [], exs = PT.dayExs(date);
   const group = (kind, label) => { const g = exs.filter(e => e.kind === kind); if (g.length) out.push({ label, kind, items: g, done: g.some(PT.hasActual) }); };
   group('strength', 'Strength'); group('time', 'Rounds');
-  exs.filter(e => e.kind === 'cardio' || e.kind === 'laps').forEach(e => out.push({ label: e.name, kind: e.kind, sport: e.kind === 'laps' ? 'swim' : e.sport, items: [e], done: PT.hasActual(e) }));
+  exs.filter(e => e.kind === 'cardio' || e.kind === 'laps').forEach(e => out.push({ label: e.name, kind: e.kind, sport: PT.entrySport(e), items: [e], done: PT.hasActual(e) }));
   return out;
 };
 const metres = (x, kind, unit) => kind === 'laps' ? (+x.sets || 1) * (+x.laps || 0) * PT.pool() : unit === 'm' ? +x.distance || 0 : (+x.distance || 0) * 1000;
@@ -357,7 +367,7 @@ PT.syncDayLog = date => {
   if (!done.length) return;
   PT.state.logs.push({ id, date, name: 'Training', type: 'day', intensity: PT.dayLevel(date), rpe: day.rpe || '', notes: '',
     exercises: done.map(en => {
-      const o = Object.assign({ exId: en.exId, name: en.name, kind: en.kind, unit: en.unit, sport: en.sport }, en.actual);
+      const o = Object.assign({ exId: en.exId, name: en.name, kind: en.kind, unit: en.unit, sport: PT.entrySport(en) }, en.actual);
       if (en.kind === 'cardio' && +o.distance && +o.time) o.pace = Math.round(o.time / (o.unit === 'm' ? o.distance / 100 : o.distance));
       return o;
     }) });
@@ -527,6 +537,14 @@ PT.migrate4 = function () {
   st.v = 4; PT.save();
 };
 PT.migrate4();
+
+/* v5: rebuild day logs so runs and swims are labelled by PT.entrySport (counts treadmill etc. as runs). */
+PT.migrate5 = function () {
+  const st = PT.state; if ((st.v || 1) >= 5) return;
+  Object.keys(st.plan).forEach(d => { if ((st.plan[d].exs || []).some(PT.hasActual)) PT.syncDayLog(d); });
+  st.v = 5; PT.save();
+};
+PT.migrate5();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {
