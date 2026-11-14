@@ -28,7 +28,7 @@ PT.weekStats = ws => {
   let planned = 0, done = 0; const mins = { sauna: 0, bike: 0, walk: 0 };
   days.forEach(d => {
     const r = s.recoveryLog[d] || {}; Object.keys(mins).forEach(k => mins[k] += +r[k] || 0);
-    if (!PT.dayExs(d).length || d > PT.today()) return; // only days that have happened count
+    if (!PT.dayExs(d).length) return; // every day of the week with training planned counts towards the total
     const tags = PT.dayTags(d);
     PT.PHASES.forEach(([ph]) => { const { list, SHOW } = PT.stretchList(d, tags, ph); const shown = list.slice(0, SHOW); planned += shown.length; done += shown.filter(x => (r.done || {})[x.id]).length; });
   });
@@ -73,10 +73,12 @@ PT.views.progress = function (parts) {
     h('div', { class: 'card reminder' }, h('div', { class: 'small red', style: { fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em' } }, 'Best of the week'),
       best ? [h('div', { class: 'stat', style: { fontSize: '22px', marginTop: '4px' } }, best[1]), h('div', { class: 'small muted' }, best[2])] : h('div', { class: 'small muted', style: { marginTop: '4px' } }, 'Nothing logged this week yet.')),
     h('div', { class: 'grid2', style: { marginTop: '10px' } },
-      tile(w.sessionsPlanned ? w.sessions + ' / ' + w.sessionsPlanned : w.sessions, 'Sessions done', (w.sessionsPlanned ? 'done of planned · ' : '') + 'last week ' + last.sessions),
-      tile(w.runKmPlan ? w.runKm + ' / ' + w.runKmPlan + ' km' : w.runKm + ' km', 'Run distance', (w.runsPlanned ? w.runsDone + ' of ' + w.runsPlanned + (w.runsPlanned === 1 ? ' run · ' : ' runs · ') : '') + 'last week ' + last.runKm + ' km'),
-      tile(w.swimMPlan ? w.swimM + ' / ' + w.swimMPlan + ' m' : w.swimM + ' m', 'Swim distance', (w.swimM ? Math.round(w.swimM / PT.pool()) + ' laps · ' : '') + 'last week ' + last.swimM + ' m'),
-      tile(w.recPct == null ? '–' : w.recPct + '%', 'Recovery done', w.planned ? w.done + ' of ' + w.planned + ' warm-ups & stretches' : 'no training days yet')),
+      // logged / planned for the whole week: the second number is what your 7 days have planned,
+      // the first goes up each time you log on the day
+      tile(w.sessions + ' / ' + w.sessionsPlanned, 'Sessions', 'logged / planned · last week ' + last.sessions + ' / ' + last.sessionsPlanned),
+      tile(w.runKm + ' / ' + w.runKmPlan + ' km', 'Run distance', w.runsDone + ' of ' + w.runsPlanned + (w.runsPlanned === 1 ? ' run' : ' runs') + ' · last week ' + last.runKm + ' / ' + last.runKmPlan + ' km'),
+      tile(w.swimM + ' / ' + w.swimMPlan + ' m', 'Swim distance', Math.round(w.swimM / PT.pool()) + ' / ' + Math.round(w.swimMPlan / PT.pool()) + ' laps · last week ' + last.swimM + ' / ' + last.swimMPlan + ' m'),
+      tile(w.done + ' / ' + w.planned, 'Recovery', (w.recPct == null ? 'warm-ups & stretches' : w.recPct + '% of warm-ups & stretches') + ' · last week ' + last.done + ' / ' + last.planned)),
     h('div', { class: 'small muted', style: { margin: '8px 2px 0' } }, 'Sauna ' + w.mins.sauna + ' min · bike ' + w.mins.bike + ' min · walk ' + w.mins.walk + ' min'),
     h('h2', {}, 'Right macros'),
     h('div', { class: 'card' },

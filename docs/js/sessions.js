@@ -75,7 +75,10 @@ PT.browseSheet = function (onAdd, opts) {
     function drawResults() {
       if (!q) { PT.fill(results, folders()); return; }
       const rows = PT.state.exercises.filter(e => e.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-      PT.fill(results, rows.length ? rows.map(e => exRow(e, home)) : h('div', { class: 'empty' }, 'No matches.'));
+      // nothing found? add it there and then (e.g. "rowing machine")
+      const raw = search.value.trim();
+      PT.fill(results, rows.length ? rows.map(e => exRow(e, home)) : h('div', { class: 'empty' }, 'No matches.'),
+        h('button', { class: 'btn ghost block', onclick: () => newEx('', home, '', raw) }, '+ Add "' + raw + '" as a new exercise'));
     }
     function folders() {
       const mine = PT.state.sessions.filter(s => s.id !== opts.skipId);
@@ -83,7 +86,7 @@ PT.browseSheet = function (onAdd, opts) {
         !opts.noSessions ? h('div', { class: 'card tap folder', onclick: sessionsFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Session library'), h('span', { class: 'muted small' }, mine.length + ' ›'))) : null,
         opts.onStretch ? h('div', { class: 'card tap folder', onclick: routinesFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Recovery routines'), h('span', { class: 'muted small' }, PT.state.routines.length + ' ›'))) : null,
         PT.FOLDERS.map(([group, list]) => [h('h2', {}, group), h('div', { class: 'folders' }, list.map(([tag, label]) => {
-          const n = PT.state.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind))).length;
+          const n = PT.state.exercises.filter(e => PT.inFolder(e, tag)).length;
           return h('div', { class: 'folder-tile', onclick: () => folder(tag, group + ' › ' + label) }, h('b', {}, label), h('span', { class: 'small muted' }, n + ' exercises'));
         }))])
       ];
@@ -112,11 +115,11 @@ PT.browseSheet = function (onAdd, opts) {
     const [group, from] = title.split(' › ');
     const back = () => folder(tag, title);
     // strength folders show strength moves only (a swim works the shoulders, but it lives in Swim)
-    const rows = PT.state.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind)))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const exKids = [rows.length ? rows.map(e => exRow(e, back, from)) : h('div', { class: 'empty' }, 'Nothing here yet.'),
-      h('button', { class: 'btn ghost block', onclick: () => newEx(tag, back, from) }, '+ New exercise in this folder')];
-    const head = [h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, from || title), addedLine()];
+    const rows = PT.state.exercises.filter(e => PT.inFolder(e, tag)).sort((a, b) => a.name.localeCompare(b.name));
+    const exKids = [rows.length ? rows.map(e => exRow(e, back, from)) : h('div', { class: 'empty' }, 'Nothing here yet.')];
+    const head = [h('button', { class: 'back', onclick: home }, '‹ Folders'),
+      h('div', { class: 'row between', style: { marginTop: '4px', flexWrap: 'nowrap' } }, h('h2', { style: { margin: '10px 0' } }, from || title),
+        h('button', { class: 'btn ghost small', onclick: () => newEx(tag, back, from) }, '+ New exercise')), addedLine()];
     if (!opts.onStretch) { PT.fill(box, head, exKids, done); return; }
     PT.fill(box, head,
       fold(tag + ':ex', group === 'Strength' ? 'Strength' : group === 'Combat' ? 'Rounds' : 'Cardio', rows.length, exKids),
@@ -130,19 +133,26 @@ PT.browseSheet = function (onAdd, opts) {
       done);
   }
 
-  function newEx(tag, back, from) {
-    const d = { name: '' };
-    PT.fill(box, h('button', { class: 'back', onclick: back }, '‹ Back'), h('h2', {}, 'New exercise'),
-      PT.field('Name', h('input', { placeholder: 'e.g. Dumbbell fly', oninput: e => d.name = e.target.value })), gap(12),
+  // New exercise: name it, say how it's measured, pick a folder if there isn't one yet, and it's added straight away.
+  function newEx(tag, back, from, name) {
+    const d = { name: name || '', kind: tag ? PT.defaultKind(tag) : 'cardio', unit: 'km', tags: tag ? [tag] : [] };
+    const draw = () => PT.fill(box, h('button', { class: 'back', onclick: back }, '‹ Back'), h('h2', {}, 'New exercise'),
+      PT.field('Name', h('input', { value: d.name, placeholder: tag === 'cardio' || !tag ? 'e.g. Rowing machine' : 'e.g. Dumbbell fly', oninput: e => d.name = e.target.value })), gap(10),
+      h('label', { class: 'f' }, 'Measured by'), PT.seg(PT.KINDS, d.kind, v => { d.kind = v; draw(); }),
+      d.kind === 'cardio' ? h('div', { style: { marginTop: '8px' } }, PT.seg([['km', 'km'], ['m', 'metres']], d.unit, v => d.unit = v)) : null,
+      !tag ? [gap(10), h('label', { class: 'f' }, 'Folder'), PT.chips(PT.TAGS, d.tags, () => {})] : null,
+      gap(12),
       h('button', { class: 'btn block', onclick: () => {
-        const name = d.name.trim(); if (!name) { PT.toast('Name it first'); return; }
-        if (PT.state.exercises.some(e => e.name.toLowerCase() === name.toLowerCase())) { PT.toast('You already have that one'); return; }
-        const kind = PT.defaultKind(tag);
-        const lib = { id: PT.uid(), name, muscles: [tag], kind, unit: kind === 'cardio' ? 'km' : '', notes: '', link: '' };
-        PT.state.exercises.push(lib); PT.save(); choose(lib, back, from);
+        const nm = d.name.trim(); if (!nm) { PT.toast('Name it first'); return; }
+        if (PT.state.exercises.some(e => e.name.toLowerCase() === nm.toLowerCase())) { PT.toast('You already have that one'); return; }
+        const muscles = d.tags.length ? d.tags.slice() : [d.kind === 'cardio' ? 'cardio' : d.kind === 'laps' ? 'swim' : d.kind === 'time' ? 'mma' : 'full'];
+        const lib = { id: PT.uid(), name: nm, muscles, kind: d.kind, unit: d.kind === 'cardio' ? d.unit : '', notes: '', link: '' };
+        PT.state.exercises.push(lib); PT.save(); choose(lib, back, from || PT.tagLabel(muscles[0]));
       } }, 'Add it'),
-      h('p', { class: 'small muted' }, 'You can set its min/max later for a suggested target. It is optional.'));
+      h('p', { class: 'small muted' }, 'It is saved to your Exercise library too. You can set its min/max later; that is optional.'));
+    draw();
   }
+
 
   function choose(lib, back, from) {
     if (!from) { const t = (lib.muscles || [])[0]; from = t ? PT.tagLabel(t) : lib.name; }

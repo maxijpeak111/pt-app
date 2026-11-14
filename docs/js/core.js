@@ -182,11 +182,11 @@ PT.back = (href, label) => h('a', { class: 'back', href }, '‹ ' + (label || 'B
 /* ---------- sessions, intensity ---------- */
 PT.TYPES = [['strength', 'Strength'], ['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike'], ['mma', 'MMA'], ['other', 'Mixed']];
 PT.typeLabel = t => (PT.TYPES.find(x => x[0] === t) || [0, 'Other'])[1];
-PT.TAGS = [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core'], ['run', 'Running'], ['swim', 'Swimming'], ['bike', 'Cycling'], ['mma', 'MMA'], ['full', 'Full body']];
+PT.TAGS = [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core'], ['run', 'Running'], ['swim', 'Swimming'], ['bike', 'Cycling'], ['cardio', 'Other cardio'], ['mma', 'MMA'], ['full', 'Full body']];
 /* Folders for browsing exercises when building a session. Each folder shows library exercises with that tag. */
 PT.FOLDERS = [
   ['Strength', [['chest', 'Chest'], ['back', 'Back'], ['shoulders', 'Shoulders'], ['arms', 'Arms'], ['legs', 'Legs'], ['core', 'Core'], ['full', 'Full body']]],
-  ['Cardio', [['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike']]],
+  ['Cardio', [['cardio', 'All cardio'], ['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike']]],
   ['Combat', [['mma', 'MMA']]]
 ];
 PT.KINDS = [['strength', 'Sets × reps × kg'], ['cardio', 'Distance + time'], ['laps', 'Sets × laps'], ['time', 'Time / rounds']];
@@ -194,7 +194,11 @@ PT.KINDS = [['strength', 'Sets × reps × kg'], ['cardio', 'Distance + time'], [
 PT.pool = () => +PT.state.settings.poolM || 18;
 PT.tagLabel = t => (PT.TAGS.find(x => x[0] === t) || [0, t])[1];
 PT.defaultTags = { strength: [], run: ['run', 'legs'], swim: ['swim', 'shoulders', 'back'], bike: ['bike', 'legs'], mma: ['mma', 'full'], other: [] };
-PT.defaultKind = t => t === 'swim' ? 'laps' : (t === 'run' || t === 'bike') ? 'cardio' : t === 'mma' ? 'time' : 'strength';
+PT.defaultKind = t => t === 'swim' ? 'laps' : (t === 'run' || t === 'bike' || t === 'cardio') ? 'cardio' : t === 'mma' ? 'time' : 'strength';
+// Exercises shown in a folder. "All cardio" holds every cardio exercise (rowing, ski erg…) whatever its folder;
+// strength folders hold strength moves only (a swim works the shoulders, but it lives in Swim).
+PT.inFolder = (e, tag) => tag === 'cardio' ? ['cardio', 'laps'].includes(e.kind) || (e.muscles || []).includes('cardio')
+  : (e.muscles || []).includes(tag) && !(PT.FOLDERS[0][1].some(([t]) => t === tag) && ['cardio', 'laps'].includes(e.kind));
 PT.defaultUnit = t => t === 'swim' ? 'm' : 'km';
 PT.newEx = type => ({ id: PT.uid(), name: '', kind: PT.defaultKind(type), sets: 3, reps: 10, kg: '', distance: '', unit: PT.defaultUnit(type), pace: 0, time: 0, notes: '' });
 PT.exText = ex => {
@@ -257,7 +261,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 10;
+PT.APP_VERSION = 11;
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
   if (en.kind !== 'cardio') return '';

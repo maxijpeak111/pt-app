@@ -1,7 +1,7 @@
 (function () {
 'use strict';
 const PT = window.PT, h = PT.h;
-const NAV = [['plan', 'Plan'], ['journal', 'Journal'], ['library', 'Library'], ['progress', 'Progress'], ['more', 'More']];
+const NAV = [['plan', 'Plan'], ['progress', 'Progress'], ['journal', 'Journal'], ['library', 'Library'], ['more', 'More']];
 
 PT.render = function () {
   const parts = (location.hash || '#/plan').replace(/^#\/?/, '').split('/');

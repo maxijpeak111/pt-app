@@ -113,3 +113,4 @@ details.section.sub .sec-title{font-size:14px}
 details.section .card input,details.section .card textarea,details.section .macro-row input{background:var(--bg)}
 .day-line{font-size:15px;margin-top:3px}.day-line.rem{font-size:14px}.day-line.rem b{color:var(--red2)}
 .journal-text{min-height:320px;font-size:16px;line-height:1.5}
+.planned input{color:#8b8f97}

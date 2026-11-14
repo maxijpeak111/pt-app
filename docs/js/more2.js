@@ -96,7 +96,7 @@ PT.moreViews.exercises = function (parts) {
   const s = PT.state, results = h('div', {});
   const folders = () => [
     PT.FOLDERS.map(([group, list]) => [h('h2', {}, group), h('div', { class: 'folders' }, list.map(([tag, label]) =>
-      h('a', { class: 'folder-tile', href: '#/library/exercises/f/' + tag }, h('b', {}, label), h('span', { class: 'small muted' }, s.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind))).length + ' exercises'))))]),
+      h('a', { class: 'folder-tile', href: '#/library/exercises/f/' + tag }, h('b', {}, label), h('span', { class: 'small muted' }, s.exercises.filter(e => PT.inFolder(e, tag)).length + ' exercises'))))]),
     s.exercises.some(e => !(e.muscles || []).length) ? [h('h2', {}, 'Other'), h('div', { class: 'folders' }, h('a', { class: 'folder-tile', href: '#/library/exercises/f/none' }, h('b', {}, 'No folder'), h('span', { class: 'small muted' }, s.exercises.filter(e => !(e.muscles || []).length).length + ' exercises')))] : null];
   const draw = q => {
     if (!q) { PT.fill(results, folders()); return; }
@@ -111,8 +111,7 @@ PT.moreViews.exercises = function (parts) {
 function exFolder(tag) {
   const none = tag === 'none';
   const label = none ? 'No folder' : PT.tagLabel(tag);
-  const strength = PT.FOLDERS[0][1].some(([t]) => t === tag); // strength folders hold strength moves; swims live in Swim
-  const rows = PT.state.exercises.filter(e => none ? !(e.muscles || []).length : (e.muscles || []).includes(tag) && !(strength && ['cardio', 'laps'].includes(e.kind))).sort((a, b) => a.name.localeCompare(b.name));
+  const rows = PT.state.exercises.filter(e => none ? !(e.muscles || []).length : PT.inFolder(e, tag)).sort((a, b) => a.name.localeCompare(b.name));
   return h('div', {}, PT.back('#/library/exercises', 'Exercise library'), h('h1', {}, label),
     h('button', { class: 'btn block', style: { marginBottom: '12px' }, onclick: () => newExercise(none ? '' : tag) }, '+ New exercise in ' + label),
     rows.length ? rows.map(exCard) : h('div', { class: 'empty' }, 'Nothing in this folder yet.'));

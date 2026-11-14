@@ -250,8 +250,9 @@ function addExercises(date, redraw) {
 
 // One exercise: the target (a guide) and what you actually did (what counts).
 // One exercise: what you plan (typed by you) and, from the day itself, what you actually did (what gets logged).
-function entryCard(date, en, redraw) {
+function entryCard(date, en, redraw, planMode) {
   const lib = PT.libEx(en), last = PT.lastDone(en, date), canDo = date <= PT.today();
+  let editPlan = !!planMode;
   const p = en.plan || (en.plan = {}), a = en.actual || {};
   const pill = h('span', { class: 'pill done' }, '✓ done');
   const extra = h('div', { class: 'small muted', style: { marginTop: '6px' } });
@@ -286,12 +287,21 @@ function entryCard(date, en, redraw) {
         if (PT.hasActual(en)) PT.confirm('Remove ' + en.name + ' and what you logged for it?', 'Remove', go); else go();
       } }, '✕')),
     last ? h('div', { class: 'small muted', style: { marginTop: '2px' } }, 'Last time (' + PT.niceDate(last.date) + '): ' + PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, last.ex))) : null,
-    gap(8), h('label', { class: 'f' }, 'Planned'), boxes(p, savePlan, null), range,
-    canDo ? [gap(10), h('label', { class: 'f', style: { color: 'var(--red2)' } }, 'Done'), boxes(a, saveDone, p), extra,
-      PT.hasPlan(en) ? h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => {
-        (PT.FIELDS[en.kind] || []).forEach(k => { if (+p[k]) a[k] = p[k]; });
-        saveDone(); el.replaceWith(entryCard(date, en, redraw)); PT.toast('Logged as planned');
-      } }, 'Did the plan ✓') : null] : null);
+    gap(8),
+    // One set of boxes. Planning ahead: you type the plan and it shows faded. On the day: the plan sits faded in the
+    // boxes and what you type is solid; that is what gets logged. "Change plan" edits the faded numbers.
+    !canDo || editPlan
+      ? [h('label', { class: 'f' }, canDo ? 'Change plan' : 'Planned'), h('div', { class: 'planned' }, boxes(p, savePlan, null)),
+         canDo ? h('button', { class: 'back small', style: { margin: '6px 0 0', color: 'var(--red2)' }, onclick: () => { editPlan = false; el.replaceWith(entryCard(date, en, redraw)); } }, 'Done changing plan') : null]
+      : [h('div', { class: 'row between', style: { flexWrap: 'nowrap' } },
+           h('label', { class: 'f', style: { color: 'var(--red2)', margin: 0 } }, PT.hasPlan(en) ? 'Done · faded = planned' : 'Done'),
+           h('button', { class: 'back small', style: { margin: 0, color: 'var(--muted)', textDecoration: 'underline' }, onclick: () => { editPlan = true; el.replaceWith(entryCard(date, en, redraw, true)); } }, PT.hasPlan(en) ? 'Change plan' : 'Add a plan')),
+         gap(4), boxes(a, saveDone, p), extra,
+         PT.hasPlan(en) ? h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => {
+           (PT.FIELDS[en.kind] || []).forEach(k => { if (+p[k]) a[k] = p[k]; });
+           saveDone(); el.replaceWith(entryCard(date, en, redraw)); PT.toast('Logged as planned');
+         } }, 'Did the plan ✓') : null],
+    range);
   status();
   return el;
 }
