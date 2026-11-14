@@ -145,6 +145,7 @@ PT.browseSheet = function (onAdd, opts) {
       h('button', { class: 'btn block', onclick: () => {
         const nm = d.name.trim(); if (!nm) { PT.toast('Name it first'); return; }
         if (PT.state.exercises.some(e => e.name.toLowerCase() === nm.toLowerCase())) { PT.toast('You already have that one'); return; }
+        if (PT.isSwim({ name: nm, muscles: d.tags }) && d.kind !== 'laps') d.kind = 'laps'; // swims are always sets × laps
         const muscles = d.tags.length ? d.tags.slice() : [d.kind === 'cardio' ? 'cardio' : d.kind === 'laps' ? 'swim' : d.kind === 'time' ? 'mma' : 'full'];
         const lib = { id: PT.uid(), name: nm, muscles, kind: d.kind, unit: d.kind === 'cardio' ? d.unit : '', notes: '', link: '' };
         PT.state.exercises.push(lib); PT.save(); choose(lib, back, from || PT.tagLabel(muscles[0]));

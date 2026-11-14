@@ -24,25 +24,35 @@ PT.weekStats = ws => {
   const we = PT.addDays(ws, 7), s = PT.state;
   const logs = s.logs.filter(l => inRange(l.date, ws, we)), before = s.logs.filter(l => l.date < ws);
   const days = [0, 1, 2, 3, 4, 5, 6].map(i => PT.addDays(ws, i));
-  // recovery: ticked vs shown before/after moves on days you had exercises
-  let planned = 0, done = 0; const mins = { sauna: 0, bike: 0, walk: 0 };
+  const completed = d => PT.dayCompleted(d);
+  // recovery = stretch sessions (each training day's Before warm-up and After stretches = 1 session each)
+  // plus sauna and steam room. A stretch session counts once any of its moves is ticked on a completed day.
+  let planned = 0, done = 0; const mins = { sauna: 0, steam: 0 };
   days.forEach(d => {
-    const r = s.recoveryLog[d] || {}; Object.keys(mins).forEach(k => mins[k] += +r[k] || 0);
-    if (!PT.dayExs(d).length) return; // every day of the week with training planned counts towards the total
+    const r = s.recoveryLog[d] || {};
+    if (completed(d)) Object.keys(mins).forEach(k => mins[k] += +r[k] || 0);
+    if (!PT.dayExs(d).length) return;
     const tags = PT.dayTags(d);
-    PT.PHASES.forEach(([ph]) => { const { list, SHOW } = PT.stretchList(d, tags, ph); const shown = list.slice(0, SHOW); planned += shown.length; done += shown.filter(x => (r.done || {})[x.id]).length; });
+    PT.PHASES.forEach(([ph]) => {
+      const { list, SHOW } = PT.stretchList(d, tags, ph); const shown = list.slice(0, SHOW);
+      if (!shown.length) return;
+      planned++; if (completed(d) && shown.some(x => (r.done || {})[x.id])) done++;
+    });
   });
-  const met = days.map(d => PT.macrosMet(d));
-  // planned vs done, from each day's exercises (a session = all strength moves that day, or one run / swim / bike)
-  const units = days.flatMap(d => PT.daySessions(d));
-  const runs = units.filter(u => u.sport === 'run'), swims = units.filter(u => u.sport === 'swim');
+  const met = days.map(d => completed(d) ? PT.macrosMet(d) : null);
+  // planned = everything on the week's 7 days; done = what you logged on days you completed
+  const units = days.flatMap(d => PT.daySessions(d).map(u => Object.assign(u, { done: u.done && completed(d) })));
+  const of = sport => units.filter(u => u.sport === sport);
   const planKm = list => list.reduce((a, u) => a + PT.entryKm(u.items[0], 'plan'), 0);
-  const doneKm = list => list.reduce((a, u) => a + PT.entryKm(u.items[0], 'actual'), 0);
+  const doneKm = list => list.filter(u => u.done).reduce((a, u) => a + PT.entryKm(u.items[0], 'actual'), 0);
+  const old = logs.filter(l => !PT.dayExs(l.date).length); // older logs with no day entries behind them
+  const runs = of('run'), swims = of('swim'), bikes = of('bike');
   return { logs, before, days, sessions: units.filter(u => u.done).length, sessionsPlanned: units.length,
-    runsDone: runs.filter(u => u.done).length, runsPlanned: runs.length, runKmPlan: PT.r1(planKm(runs)), swimMPlan: Math.round(planKm(swims) * 1000), planned, done,
-    recPct: planned ? Math.round(done / planned * 100) : null,
-    // done distances straight from the days (plus any older logs that have no day entries behind them)
-    runKm: PT.r1(doneKm(runs) + runKm(logs.filter(l => !PT.dayExs(l.date).length))), swimM: Math.round(doneKm(swims) * 1000 + swimM(logs.filter(l => !PT.dayExs(l.date).length))), mins, met, metDays: met.filter(x => x === true).length, fuelDays: met.filter(x => x !== null).length };
+    runsDone: runs.filter(u => u.done).length, runsPlanned: runs.length, runKmPlan: PT.r1(planKm(runs)), runKm: PT.r1(doneKm(runs) + runKm(old)),
+    swimMPlan: Math.round(planKm(swims) * 1000), swimM: Math.round(doneKm(swims) * 1000 + swimM(old)),
+    bikesDone: bikes.filter(u => u.done).length, bikesPlanned: bikes.length, bikeKmPlan: PT.r1(planKm(bikes)), bikeKm: PT.r1(doneKm(bikes)),
+    planned, done, recPct: planned ? Math.round(done / planned * 100) : null, mins,
+    met, metDays: met.filter(x => x === true).length, fuelDays: met.filter(x => x !== null).length };
 };
 // The standout of the week: a new best beats everything, then volume.
 function bestStat(w) {
@@ -52,7 +62,7 @@ function bestStat(w) {
   const lr = longestRun(w.logs), plr = longestRun(w.before); if (plr && lr > plr) wins.push([90, 'Longest run yet: ' + lr + ' km', 'previous longest ' + plr + ' km']);
   const ms = mostSwim(w.logs), pms = mostSwim(w.before); if (pms && ms > pms) wins.push([85, 'Biggest swim yet: ' + ms + ' m', 'previous best ' + pms + ' m']);
   if (w.fuelDays && w.metDays >= 5) wins.push([70, 'Macros on point ' + w.metDays + ' of 7 days', 'eating habits locked in']);
-  if (w.recPct != null && w.recPct >= 80) wins.push([60, 'Recovery ' + w.recPct + '% done', w.done + ' of ' + w.planned + ' warm-ups and stretches']);
+  if (w.recPct != null && w.recPct >= 80) wins.push([60, 'Recovery ' + w.recPct + '% done', w.done + ' of ' + w.planned + ' stretch sessions']);
   if (w.sessions) wins.push([50, w.sessions + (w.sessions === 1 ? ' session' : ' sessions') + ' logged', w.runKm ? w.runKm + ' km run' : w.swimM ? w.swimM + ' m swum' : 'keep it rolling']);
   wins.sort((a, b) => b[0] - a[0]);
   return wins[0] || null;
@@ -78,8 +88,9 @@ PT.views.progress = function (parts) {
       tile(w.sessions + ' / ' + w.sessionsPlanned, 'Sessions', 'logged / planned · last week ' + last.sessions + ' / ' + last.sessionsPlanned),
       tile(w.runKm + ' / ' + w.runKmPlan + ' km', 'Run distance', w.runsDone + ' of ' + w.runsPlanned + (w.runsPlanned === 1 ? ' run' : ' runs') + ' · last week ' + last.runKm + ' / ' + last.runKmPlan + ' km'),
       tile(w.swimM + ' / ' + w.swimMPlan + ' m', 'Swim distance', Math.round(w.swimM / PT.pool()) + ' / ' + Math.round(w.swimMPlan / PT.pool()) + ' laps · last week ' + last.swimM + ' / ' + last.swimMPlan + ' m'),
-      tile(w.done + ' / ' + w.planned, 'Recovery', (w.recPct == null ? 'warm-ups & stretches' : w.recPct + '% of warm-ups & stretches') + ' · last week ' + last.done + ' / ' + last.planned)),
-    h('div', { class: 'small muted', style: { margin: '8px 2px 0' } }, 'Sauna ' + w.mins.sauna + ' min · bike ' + w.mins.bike + ' min · walk ' + w.mins.walk + ' min'),
+      tile(w.bikeKm + ' / ' + w.bikeKmPlan + ' km', 'Bike distance', w.bikesDone + ' of ' + w.bikesPlanned + (w.bikesPlanned === 1 ? ' ride' : ' rides') + ' · last week ' + last.bikeKm + ' / ' + last.bikeKmPlan + ' km'),
+      tile(w.done + ' / ' + w.planned, 'Recovery', 'stretch sessions · sauna ' + w.mins.sauna + ' min · steam ' + w.mins.steam + ' min')),
+    h('div', { class: 'small muted', style: { margin: '8px 2px 0' } }, 'Only days you have completed count as done. Last week recovery: ' + last.done + ' / ' + last.planned + ' stretch sessions.'),
     h('h2', {}, 'Right macros'),
     h('div', { class: 'card' },
       h('div', { class: 'row between small' }, h('b', {}, w.metDays + ' of 7 days on target'), h('span', { class: 'muted' }, w.fuelDays + ' days logged')),

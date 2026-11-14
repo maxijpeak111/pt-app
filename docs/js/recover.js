@@ -29,7 +29,7 @@ PT.addDayStretch = (date, id, phase) => {
 };
 function recDay(date) {
   const r = PT.state.recoveryLog;
-  if (!r[date]) r[date] = { done: {}, sauna: '', bike: '', walk: '' };
+  if (!r[date]) r[date] = { done: {}, sauna: '', steam: '' };
   if (!r[date].done) r[date].done = {};
   return r[date];
 }
@@ -75,6 +75,9 @@ PT.stretchBlock = (date, tags, phase, withPicked) => {
     if (idx >= SHOW) { row.style.display = 'none'; extra.push(row); }
     card.append(row);
   });
+  if (withPicked && list.length) card.append(h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: ev => {
+    ev.preventDefault(); const d = recDay(date); list.slice(0, SHOW).forEach(x => d.done[x.id] = true); PT.save(); PT.render();
+  } }, phase === 'before' ? 'Did this warm-up ✓' : 'Did these stretches ✓'));
   if (extra.length) {
     const more = h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => { extra.forEach(r => r.style.display = ''); more.remove(); } }, 'Show ' + extra.length + ' more');
     card.append(more);
@@ -84,11 +87,11 @@ PT.stretchBlock = (date, tags, phase, withPicked) => {
   return outer;
 };
 
-// Sauna / bike / walk minutes for a day.
+// Sauna and steam room minutes for a day. (Recovery = stretching, sauna and steam room.)
 PT.activityBlock = date => {
   const r = PT.state.recoveryLog[date] || {};
   const mk = (key, label) => PT.field(label + ' (min)', PT.numInput(r[key], v => { recDay(date)[key] = v; PT.save(); }, '0', '1'));
-  return h('div', { class: 'card' }, h('b', {}, 'Other recovery'), h('div', { class: 'grid3', style: { marginTop: '8px' } }, mk('sauna', 'Sauna'), mk('bike', 'Bike'), mk('walk', 'Walk')));
+  return h('div', { class: 'card' }, h('b', {}, 'Sauna & steam'), h('div', { class: 'grid2', style: { marginTop: '8px' } }, mk('sauna', 'Sauna'), mk('steam', 'Steam room')));
 };
 
 /* ---------- Library tab: sessions, exercises, meals, recovery ---------- */

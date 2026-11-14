@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); if (PT.migrate6) PT.migrate6(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -245,7 +245,7 @@ PT.dayTitle = date => {
   const areas = [];
   PT.dayExs(date).forEach(en => {
     const lib = PT.libEx(en);
-    const a = lib ? (PT.sportOf(lib) || (lib.muscles || [])[0]) : (en.kind === 'laps' ? 'swim' : en.sport);
+    const a = PT.entrySport(en) || (lib ? (lib.muscles || [])[0] : en.sport);
     if (a && AREA[a] && !areas.includes(AREA[a])) areas.push(AREA[a]);
   });
   if (!areas.length) return PT.dayExs(date).length ? 'Training day' : '';
@@ -261,7 +261,8 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 11;
+PT.APP_VERSION = 12;
+PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
   if (en.kind !== 'cardio') return '';
@@ -364,9 +365,11 @@ const metres = (x, kind, unit) => kind === 'laps' ? (+x.sets || 1) * (+x.laps ||
 PT.entryKm = (en, which) => { const x = en[which]; return x ? metres(x, en.kind, en.unit) / 1000 : 0; };
 PT.dayLevel = date => { const xs = PT.dayExs(date); return xs.length ? Math.round(xs.reduce((a, e) => a + (+e.level || 7), 0) / xs.length) : 0; };
 // Keep one log per training day, built from what you actually did. Progress charts read these logs.
+// A day counts as done only once you press "Complete day"; until then it is still the plan.
+PT.dayCompleted = date => !!(PT.state.plan[date] || {}).completed;
 PT.syncDayLog = date => {
   const day = PT.state.plan[date] || {}, id = 'day-' + date;
-  const done = (day.exs || []).filter(PT.hasActual);
+  const done = day.completed ? (day.exs || []).filter(PT.hasActual) : [];
   PT.state.logs = PT.state.logs.filter(l => l.id !== id);
   if (!done.length) return;
   PT.state.logs.push({ id, date, name: 'Training', type: 'day', intensity: PT.dayLevel(date), rpe: day.rpe || '', notes: '',
@@ -549,6 +552,40 @@ PT.migrate5 = function () {
   st.v = 5; PT.save();
 };
 PT.migrate5();
+
+/* v6: (1) swims are always sets × laps, including ones first set up as sets × reps or distance;
+   (2) "Complete day": earlier days you had logged count as completed. */
+PT.migrate6 = function () {
+  const st = PT.state; if ((st.v || 1) >= 6) return;
+  const pool = PT.pool();
+  const toLaps = (x, kind, unit) => {
+    if (!x) return x;
+    if (kind === 'strength') return { sets: x.sets || 1, laps: x.reps || '', time: x.time || '' };
+    if (kind === 'cardio') { const m = unit === 'km' ? +x.distance * 1000 : +x.distance; return { sets: 1, laps: m ? Math.max(1, Math.round(m / pool)) : '', time: x.time || '' }; }
+    return x;
+  };
+  const swimLibs = new Set();
+  st.exercises.forEach(e => {
+    if (!PT.isSwim(e) || e.kind === 'laps') return;
+    if (e.range) e.range = { min: toLaps(e.range.min, e.kind || 'strength', e.unit), max: toLaps(e.range.max, e.kind || 'strength', e.unit) };
+    e.kind = 'laps'; e.unit = ''; if (!(e.muscles || []).includes('swim')) e.muscles = ['swim'].concat(e.muscles || []);
+    swimLibs.add(e.id);
+  });
+  const fix = en => {
+    const lib = PT.libEx(en);
+    if (en.kind === 'laps' || !(lib ? lib.kind === 'laps' : PT.isSwim(en))) return;
+    en.plan = toLaps(en.plan, en.kind, en.unit); en.actual = toLaps(en.actual, en.kind, en.unit); en.kind = 'laps'; en.unit = ''; en.sport = 'swim';
+  };
+  st.sessions.forEach(s => s.exercises.forEach(fix));
+  const today = PT.today();
+  Object.keys(st.plan).forEach(d => {
+    const day = st.plan[d]; (day.exs || []).forEach(fix);
+    if (d < today && (day.exs || []).some(PT.hasActual)) day.completed = true;
+    PT.syncDayLog(d);
+  });
+  st.v = 6; PT.save();
+};
+PT.migrate6();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {
