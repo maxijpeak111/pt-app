@@ -23,7 +23,7 @@ function defaults() {
     v: 1, seeded: false,
     settings: { minPct: 60, maxPct: 110, poolM: 18, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], recoveryLog: {},
-    foods: [], meals: [], foodLog: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
+    foods: [], meals: [], foodLog: {}, fuelActual: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
 }
 function merge(d, o) {
@@ -165,6 +165,17 @@ PT.spark = points => {
   line.setAttribute('stroke-width', '2'); line.setAttribute('vector-effect', 'non-scaling-stroke');
   svg.append(line);
   return svg;
+};
+// A drop box: tap the header to open/close. `key` remembers open/closed (on this phone) between visits.
+// `summary` can be text or an element you update later.
+PT.section = (key, title, summary, kids, cls) => {
+  const s = PT.state.settings; s.dayOpen = s.dayOpen || { training: true };
+  const det = h('details', { class: 'section' + (cls ? ' ' + cls : ''), open: !!s.dayOpen[key] },
+    h('summary', {}, h('div', { class: 'grow' }, h('div', { class: 'sec-title' }, title),
+      summary ? (summary.nodeType ? summary : h('div', { class: 'small muted' }, summary)) : null), h('span', { class: 'chev' })),
+    h('div', { class: 'sec-body' }, kids));
+  det.addEventListener('toggle', () => { s.dayOpen[key] = det.open; PT.save(); });
+  return det;
 };
 PT.back = (href, label) => h('a', { class: 'back', href }, '‹ ' + (label || 'Back'));
 

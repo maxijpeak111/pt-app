@@ -40,7 +40,10 @@ PT.stretchBlock = (date, tags, phase, withPicked) => {
   phase = phase || 'after';
   const picked = withPicked ? PT.dayStretchIds(date, phase).map(PT.stretchById).filter(Boolean) : [];
   const pickedIds = new Set(picked.map(x => x.id));
-  const list = [...picked, ...PT.stretchesFor(tags, phase).filter(x => !pickedIds.has(x.id))];
+  // best matches first (the ones that cover most of today's areas); only the top 6 show until you ask for more
+  const score = x => x.tags.filter(t => tags.includes(t)).length;
+  const auto = PT.stretchesFor(tags, phase).filter(x => !pickedIds.has(x.id)).sort((a, b) => score(b) - score(a));
+  const list = [...picked, ...auto], SHOW = Math.max(6, picked.length);
   const rec = PT.state.recoveryLog[date];
   const count = () => list.filter(x => ((PT.state.recoveryLog[date] || {}).done || {})[x.id]).length;
   const head = h('div', { class: 'row between' }, h('b', {}, phase === 'before' ? 'Before · prep' : 'After · cool-down'), h('span', { class: 'muted small' }));
@@ -54,7 +57,8 @@ PT.stretchBlock = (date, tags, phase, withPicked) => {
     outer.append(det); card = det;
   } else outer.append(head);
   if (tags.length) card.append(h('div', { class: 'small muted', style: { marginTop: '2px' } }, 'For: ' + tags.map(PT.tagLabel).join(' + ')));
-  list.forEach(st => {
+  const extra = [];
+  list.forEach((st, idx) => {
     const cb = h('input', { type: 'checkbox', checked: !!(rec && rec.done && rec.done[st.id]) });
     const row = h('label', { class: 'checkrow' + (cb.checked ? ' done' : '') }, cb,
       h('div', { class: 'grow' }, h('div', { class: 't' }, st.name + (st.own ? ' ★' : ''), h('span', { class: 'muted small' }, ' · ' + st.hold)), h('div', { class: 'small muted' }, st.how || '')),
@@ -65,8 +69,13 @@ PT.stretchBlock = (date, tags, phase, withPicked) => {
       const d = recDay(date); if (cb.checked) d.done[st.id] = true; else delete d.done[st.id];
       row.classList.toggle('done', cb.checked); PT.save(); upd();
     });
+    if (idx >= SHOW) { row.style.display = 'none'; extra.push(row); }
     card.append(row);
   });
+  if (extra.length) {
+    const more = h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => { extra.forEach(r => r.style.display = ''); more.remove(); } }, 'Show ' + extra.length + ' more');
+    card.append(more);
+  }
   if (!list.length) card.append(h('div', { class: 'muted small', style: { marginTop: '6px' } }, phase === 'before' ? 'Add exercises to get prep moves matched to them, or pick some from a folder.' : 'Add exercises to get cool-down stretches matched to them, or pick some from a folder.'));
   upd();
   return outer;

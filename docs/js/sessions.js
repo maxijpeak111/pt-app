@@ -97,23 +97,35 @@ PT.browseSheet = function (onAdd, opts) {
       set ? h('div', { class: 'small muted' }, PT.exText(PT.atLevel(lib, 1)) + '  →  ' + PT.exText(PT.atLevel(lib, 10))) : null);
   }
 
-  function folder(tag, title) {
-    const rows = PT.state.exercises.filter(e => (e.muscles || []).includes(tag)).sort((a, b) => a.name.localeCompare(b.name));
-    PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, title), addedLine(),
-      rows.length ? rows.map(e => exRow(e, () => folder(tag, title), title.split(' › ')[1])) : h('div', { class: 'empty' }, 'Nothing here yet.'),
-      h('button', { class: 'btn ghost block', onclick: () => newEx(tag, () => folder(tag, title), title.split(' › ')[1]) }, '+ New exercise in this folder'),
-      opts.onStretch ? stretchesIn(tag, title) : null, done);
+  // Inside a folder: closed drop boxes (exercises, before, after) so you only open what you need.
+  const openBox = {};
+  function fold(key, title, count, kids) {
+    const det = h('details', { class: 'section sub', open: !!openBox[key] },
+      h('summary', {}, h('div', { class: 'grow' }, h('div', { class: 'sec-title' }, title)), h('span', { class: 'muted small' }, String(count)), h('span', { class: 'chev' })),
+      h('div', { class: 'sec-body' }, kids));
+    det.addEventListener('toggle', () => { openBox[key] = det.open; });
+    return det;
   }
-
-  // Prep moves and stretches that live in this folder, split into before and after.
-  function stretchesIn(tag, title) {
+  function folder(tag, title) {
+    const [group, from] = title.split(' › ');
     const back = () => folder(tag, title);
-    return [PT.PHASES.map(([ph, label]) => {
-      const list = PT.allStretches().filter(x => PT.phaseOf(x) === ph && x.tags.includes(tag));
-      return [h('h2', {}, 'Stretches · ' + label), list.map(st => h('div', { class: 'card tap', onclick: () => { opts.onStretch(st.id, ph); added++; PT.toast('Added ' + st.name + ' to ' + (ph === 'before' ? 'Before' : 'After')); back(); } },
-        h('div', { class: 'row between', style: { flexWrap: 'nowrap' } }, h('div', {}, h('b', {}, st.name + (st.own ? ' ★' : '')), h('div', { class: 'small muted' }, st.hold)), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '22px' } }, '+'))))];
-    }),
-    h('button', { class: 'btn ghost block', onclick: () => PT.stretchForm(box, [tag], 'after', st => { opts.onStretch(st.id, PT.phaseOf(st)); added++; PT.toast('Saved and added ' + st.name); back(); }, back) }, '+ New stretch in this folder')];
+    // strength folders show strength moves only (a swim works the shoulders, but it lives in Swim)
+    const rows = PT.state.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const exKids = [rows.length ? rows.map(e => exRow(e, back, from)) : h('div', { class: 'empty' }, 'Nothing here yet.'),
+      h('button', { class: 'btn ghost block', onclick: () => newEx(tag, back, from) }, '+ New exercise in this folder')];
+    const head = [h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, from || title), addedLine()];
+    if (!opts.onStretch) { PT.fill(box, head, exKids, done); return; }
+    PT.fill(box, head,
+      fold(tag + ':ex', group === 'Strength' ? 'Strength' : group === 'Combat' ? 'Rounds' : 'Cardio', rows.length, exKids),
+      PT.PHASES.map(([ph]) => {
+        const list = PT.allStretches().filter(x => PT.phaseOf(x) === ph && x.tags.includes(tag));
+        return fold(tag + ':' + ph, ph === 'before' ? 'Before · warm-up' : 'After · stretches', list.length, [
+          list.map(st => h('div', { class: 'card tap', onclick: () => { opts.onStretch(st.id, ph); added++; PT.toast('Added ' + st.name + ' to ' + (ph === 'before' ? 'Before' : 'After')); back(); } },
+            h('div', { class: 'row between', style: { flexWrap: 'nowrap' } }, h('div', {}, h('b', {}, st.name + (st.own ? ' ★' : '')), h('div', { class: 'small muted' }, st.hold)), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '22px' } }, '+')))),
+          h('button', { class: 'btn ghost block', onclick: () => PT.stretchForm(box, [tag], ph, st => { opts.onStretch(st.id, PT.phaseOf(st)); added++; PT.toast('Saved and added ' + st.name); back(); }, back) }, '+ New ' + (ph === 'before' ? 'warm-up move' : 'stretch') + ' in this folder')]);
+      }),
+      done);
   }
 
   function newEx(tag, back, from) {

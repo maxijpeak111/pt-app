@@ -53,6 +53,7 @@ function dayCard(date) {
     exs.slice(0, 6).map(en => h('span', { class: 'pill ' + (PT.hasActual(en) ? 'done' : 'type') }, en.name + (PT.hasActual(en) ? ' ✓' : ''))),
     exs.length > 6 ? h('span', { class: 'pill' }, '+' + (exs.length - 6) + ' more') : null,
     !exs.length ? h('div', { class: 'muted small' }, 'Nothing planned') : null,
+    PT.remindersFor(date).length ? h('span', { class: 'pill shift' }, PT.remindersFor(date).length === 1 ? '1 reminder' : PT.remindersFor(date).length + ' reminders') : null,
     (fuel.kcal || rec.sauna || rec.bike || rec.walk) ? h('div', { class: 'small muted', style: { marginTop: '4px' } },
       [fuel.kcal ? Math.round(fuel.kcal) + ' kcal' : null, rec.sauna ? 'sauna ' + rec.sauna + 'm' : null, rec.bike ? 'bike ' + rec.bike + 'm' : null, rec.walk ? 'walk ' + rec.walk + 'm' : null].filter(Boolean).join(' · ')) : null);
 }
@@ -72,73 +73,145 @@ function copyShifts() {
 const openState = {}; // remembers if the Intensity dropdown is open while you work on a day
 const gap = px => h('div', { style: { height: px + 'px' } });
 
+/* ---------- notes that mention another day ---------- */
+const WD = { sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2, wed: 3, weds: 3, wednesday: 3, thu: 4, thur: 4, thurs: 4, thursday: 4, fri: 5, friday: 5, saturday: 6 };
+const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+const MONRX = '(jan|feb|mar|apr|may|jun|jul|aug|sept|sep|oct|nov|dec)[a-z]*';
+// Dates a piece of text talks about, worked out from the day it was written on (base).
+PT.datesIn = (text, base) => {
+  const out = new Set(), days = new Set(), t = ' ' + String(text).toLowerCase() + ' ';
+  const b = PT.parse(base);
+  const ymd = (y, m, d) => { const x = new Date(y, m, d); return x.getMonth() === m ? PT.dstr(x) : null; };
+  const future = (m, d) => { let s = ymd(b.getFullYear(), m, d); if (s && s <= base) s = ymd(b.getFullYear() + 1, m, d); return s; };
+  if (/\btomorrow\b/.test(t)) out.add(PT.addDays(base, 1));
+  // weekday names → the next one after the day you wrote it ("Sat" only with a capital, so "I sat down" doesn't count)
+  for (const m of t.matchAll(/\b(sunday|monday|mon|tuesday|tues|tue|wednesday|weds|wed|thursday|thurs|thur|thu|friday|fri|saturday)\b/g)) {
+    const diff = ((WD[m[1]] - b.getDay()) + 7) % 7 || 7; days.add(PT.addDays(base, diff));
+  }
+  if (/\bSat\b/.test(text)) days.add(PT.addDays(base, ((6 - b.getDay()) + 7) % 7 || 7));
+  const usedNums = new Set();
+  for (const m of t.matchAll(new RegExp('\\b(\\d{1,2})(?:st|nd|rd|th)?\\s*(?:of\\s+)?' + MONRX + '\\b', 'g'))) { const s2 = future(MON[m[2]], +m[1]); if (s2) out.add(s2); usedNums.add(m.index); }
+  for (const m of t.matchAll(new RegExp('\\b' + MONRX + '\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b', 'g'))) { const s2 = future(MON[m[1]], +m[2]); if (s2) out.add(s2); }
+  for (const m of t.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/g)) { const s2 = future(+m[2] - 1, +m[1]); if (s2) out.add(s2); }
+  // "the 18th" on its own → the next 18th
+  for (const m of t.matchAll(/\b(\d{1,2})(st|nd|rd|th)\b(?!\s*(?:of\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec))/g)) {
+    const d = +m[1]; if (d < 1 || d > 31) continue;
+    for (let k = 1; k <= 62; k++) { const c = PT.addDays(base, k); if (PT.parse(c).getDate() === d) { out.add(c); break; } }
+  }
+  // a written date beats a weekday ("Friday 21st" means the 21st)
+  return out.size ? [...out] : [...days];
+};
+// Lines from other days' notes that mention this date, plus reminders you sent here yourself.
+PT.remindersFor = date => {
+  const out = [], day = PT.state.plan[date] || {}, gone = new Set(day.dismissed || []);
+  (day.reminders || []).forEach(r => { if (!r.done) out.push({ key: 'r:' + r.id, text: r.text, from: r.from, manual: r }); });
+  Object.keys(PT.state.plan).forEach(d => {
+    if (d === date || d > date || PT.daysBetween(d, date) > 62) return;
+    const note = PT.state.plan[d].note; if (!note) return;
+    note.split(/\n+|[.!?]\s+/).map(x => x.trim()).filter(Boolean).forEach(line => {
+      const key = d + '|' + line;
+      if (!gone.has(key) && PT.datesIn(line, d).includes(date)) out.push({ key, text: line, from: d });
+    });
+  });
+  return out;
+};
+function remindersCard(date) {
+  const list = PT.remindersFor(date);
+  if (!list.length) return null;
+  return h('div', { class: 'card reminder' },
+    h('b', { class: 'red' }, list.length === 1 ? 'Reminder' : list.length + ' reminders'),
+    list.map(r => h('div', { class: 'row between', style: { flexWrap: 'nowrap', marginTop: '6px' } },
+      h('div', { class: 'grow' }, h('div', {}, r.text), h('div', { class: 'small muted' }, 'from your note on ' + PT.niceDate(r.from))),
+      h('button', { class: 'btn ghost small', 'aria-label': 'Done', onclick: () => {
+        if (r.manual) r.manual.done = true; else { const d = ensureDay(date); d.dismissed = (d.dismissed || []).concat(r.key); }
+        PT.save(); PT.render();
+      } }, 'Done ✓'))));
+}
+
+/* ---------- day page: shift on top, then drop boxes ---------- */
 function dayView(date) {
   const day = PT.state.plan[date] || {};
   const isToday = date === PT.today();
   const root = h('div', {}, PT.back('#/plan', 'Week'), h('h1', {}, isToday ? 'Today · ' + PT.niceDate(date) : PT.niceDate(date)));
 
-  // training: everything that changes when exercises are added lives in `train` and is redrawn together
+  // shift: always at the top; tap to change it
+  const shift = day.shift ? Object.assign({}, day.shift) : { label: '', start: '09:00', end: '17:00' };
+  root.append(PT.section('shift', day.shift ? 'Shift ' + day.shift.start + '–' + day.shift.end : 'No shift', day.shift ? (day.shift.label || 'Tap to change') : 'Tap to add one', [
+    h('div', { class: 'grid2' },
+      PT.field('Start', h('input', { type: 'time', value: shift.start, oninput: e => shift.start = e.target.value })),
+      PT.field('End', h('input', { type: 'time', value: shift.end, oninput: e => shift.end = e.target.value }))),
+    h('div', { style: { margin: '8px 0' } }, PT.field('Label (optional)', h('input', { placeholder: 'e.g. Early, Late, Gym floor', value: shift.label || '', oninput: e => shift.label = e.target.value }))),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn small grow', onclick: () => { ensureDay(date).shift = Object.assign({}, shift); PT.save(); PT.toast('Shift saved'); PT.render(); } }, day.shift ? 'Update shift' : 'Save shift'),
+      day.shift ? h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).shift = null; PT.save(); PT.render(); } }, 'Clear') : null)]));
+
+  root.append(remindersCard(date) || '');
+
+  // training: warm-up, exercises, cool-down and other recovery, all in one box
   const train = h('div', {});
-  const redraw = () => PT.fill(train, training(date, redraw));
+  const redraw = () => PT.fill(train, PT.section('training', 'Training', trainSummary(date), training(date, redraw)));
   redraw();
   root.append(train);
 
-  root.append(gap(10), PT.activityBlock(date));
-
-  // fuel
-  const f = PT.dayFuel(date), t = PT.dayTargets(date);
-  root.append(h('h2', {}, 'Fuel'),
-    h('a', { class: 'card tap', href: '#/fuel/' + date },
-      h('div', { class: 'row between' }, h('div', { class: 'stat' }, Math.round(f.kcal) + (t.kcal ? ' / ' + t.kcal : '') + ' kcal'), h('span', { class: 'red' }, '›')),
-      h('div', { class: 'small muted' }, 'P ' + Math.round(f.p) + 'g · C ' + Math.round(f.c) + 'g · F ' + Math.round(f.f) + 'g')));
-
-  // shift
-  const shift = day.shift ? Object.assign({}, day.shift) : { label: '', start: '09:00', end: '17:00' };
-  root.append(h('h2', {}, 'Work shift'),
-    h('div', { class: 'card' },
-      h('div', { class: 'grid2' },
-        PT.field('Start', h('input', { type: 'time', value: shift.start, oninput: e => shift.start = e.target.value })),
-        PT.field('End', h('input', { type: 'time', value: shift.end, oninput: e => shift.end = e.target.value }))),
-      h('div', { style: { margin: '8px 0' } }, PT.field('Label (optional)', h('input', { placeholder: 'e.g. Early, Late, Gym floor', value: shift.label || '', oninput: e => shift.label = e.target.value }))),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn small grow', onclick: () => { ensureDay(date).shift = Object.assign({}, shift); PT.save(); PT.toast('Shift saved'); PT.render(); } }, day.shift ? 'Update shift' : 'Save shift'),
-        day.shift ? h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).shift = null; PT.save(); PT.render(); } }, 'Clear') : null)));
-
-  // other calendar events
+  // calendar / day plan
   const evs = day.events || [], ne = { title: '', start: '', end: '' };
-  root.append(h('h2', {}, 'Calendar'),
-    evs.length ? h('div', {}, evs.map(ev => h('div', { class: 'card row between' }, h('div', {}, PT.eventsText(ev)),
-      h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).events = evs.filter(x => x.id !== ev.id); PT.save(); PT.render(); } }, 'Delete')))) : h('div', { class: 'empty' }, 'No other events. Import your calendar from the Plan tab, or add one here.'),
-    h('details', {}, h('summary', {}, '+ Add event'),
-      h('div', { class: 'card' },
-        PT.field('What', h('input', { placeholder: 'e.g. Physio, dinner with a friend', oninput: e => ne.title = e.target.value })),
-        h('div', { class: 'grid2', style: { margin: '8px 0' } },
-          PT.field('Start (optional)', h('input', { type: 'time', oninput: e => ne.start = e.target.value })),
-          PT.field('End (optional)', h('input', { type: 'time', oninput: e => ne.end = e.target.value }))),
-        h('button', { class: 'btn small block', onclick: () => {
-          if (!ne.title.trim()) { PT.toast('Write what it is first'); return; }
-          const d = ensureDay(date); d.events = (d.events || []).concat({ id: PT.uid(), title: ne.title.trim(), start: ne.start, end: ne.end });
-          d.events.sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1); PT.save(); PT.render();
-        } }, 'Add event'))));
+  root.append(PT.section('calendar', 'Calendar · day plan', evs.length ? evs.length + (evs.length === 1 ? ' event · ' : ' events · ') + PT.eventsText(evs[0]) : 'Nothing else on', [
+    evs.length ? evs.map(ev => h('div', { class: 'card row between' }, h('div', {}, PT.eventsText(ev)),
+      h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).events = evs.filter(x => x.id !== ev.id); PT.save(); PT.render(); } }, 'Delete'))) : h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'No events. Import your calendar from the Plan tab, or add one here.'),
+    h('div', { class: 'card' },
+      PT.field('Add event', h('input', { placeholder: 'e.g. Physio, dinner with a friend', oninput: e => ne.title = e.target.value })),
+      h('div', { class: 'grid2', style: { margin: '8px 0' } },
+        PT.field('Start (optional)', h('input', { type: 'time', oninput: e => ne.start = e.target.value })),
+        PT.field('End (optional)', h('input', { type: 'time', oninput: e => ne.end = e.target.value }))),
+      h('button', { class: 'btn small block', onclick: () => {
+        if (!ne.title.trim()) { PT.toast('Write what it is first'); return; }
+        const d = ensureDay(date); d.events = (d.events || []).concat({ id: PT.uid(), title: ne.title.trim(), start: ne.start, end: ne.end });
+        d.events.sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1); PT.save(); PT.render();
+      } }, 'Add event'))]));
 
-  // note
-  root.append(h('h2', {}, 'Day note'),
-    h('textarea', { placeholder: 'How today went, what to remember…', value: day.note || '', onchange: e => { ensureDay(date).note = e.target.value; PT.save(); } }));
+  // fuel: goals faded, you type what you actually had
+  const fuelSum = h('div', { class: 'small muted' }, PT.fuelSummary(date));
+  root.append(PT.section('fuel', 'Fuel', fuelSum, [
+    PT.fuelBlock(date, () => { fuelSum.textContent = PT.fuelSummary(date); }),
+    h('div', { style: { marginTop: '10px' } }, PT.fuelTracker()),
+    h('a', { class: 'btn ghost small block', style: { marginTop: '10px' }, href: '#/fuel/' + date }, 'Meals & foods ›')]));
+
+  // notes: lines that mention another day show up on that day
+  const firstLine = (day.note || '').split('\n')[0];
+  const rem = { date: PT.addDays(date, 1), text: '' };
+  root.append(PT.section('notes', 'Notes', firstLine ? (firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine) : 'Nothing yet', [
+    h('textarea', { placeholder: 'How today went, what to remember… Mention a day ("Wed: bring swim cap", "tomorrow", "the 18th") and it shows up on that day.', value: day.note || '', onchange: e => { ensureDay(date).note = e.target.value; PT.save(); PT.toast('Saved'); } }),
+    h('div', { class: 'card', style: { marginTop: '10px' } },
+      h('b', {}, 'Remind me on another day'),
+      h('div', { class: 'grid2', style: { margin: '8px 0' } },
+        PT.field('Day', h('input', { type: 'date', value: rem.date, oninput: e => rem.date = e.target.value })),
+        PT.field('Reminder', h('input', { placeholder: 'e.g. book physio', oninput: e => rem.text = e.target.value }))),
+      h('button', { class: 'btn small block', onclick: () => {
+        if (!rem.text.trim() || !rem.date) { PT.toast('Write the reminder and pick a day'); return; }
+        const d = ensureDay(rem.date); d.reminders = (d.reminders || []).concat({ id: PT.uid(), text: rem.text.trim(), from: date });
+        PT.save(); PT.toast('Reminder added to ' + PT.niceDate(rem.date)); PT.render();
+      } }, 'Add reminder'))]));
   return root;
+}
+
+function trainSummary(date) {
+  const exs = PT.dayExs(date);
+  if (!exs.length) return 'Nothing planned · tap to add exercises';
+  const n = exs.filter(PT.hasActual).length;
+  return exs.length + (exs.length === 1 ? ' exercise' : ' exercises') + ' · ' + n + ' logged · ' + exs.slice(0, 3).map(e => e.name).join(', ') + (exs.length > 3 ? '…' : '');
 }
 
 function training(date, redraw) {
   const exs = PT.dayExs(date), tags = PT.dayTags(date);
-  const logged = exs.filter(PT.hasActual).length;
   return [
     PT.stretchBlock(date, tags, 'before', true),
-    h('h2', {}, exs.length ? 'Exercises · ' + logged + '/' + exs.length + ' logged' : 'Exercises'),
     exs.length ? exs.map(en => entryCard(date, en, redraw)) : h('div', { class: 'empty' }, 'Nothing yet. Tap Add exercises and pick from the folders: Chest, Back, Legs, Swim, Run…'),
     h('button', { class: 'btn block', onclick: () => addExercises(date, redraw) }, '+ Add exercises'),
     exs.length ? intensityBox(date, redraw) : null,
     exs.length ? effortBox(date) : null,
-    gap(16),
-    PT.stretchBlock(date, tags, 'after', true)
+    gap(10),
+    PT.stretchBlock(date, tags, 'after', true),
+    PT.activityBlock(date)
   ];
 }
 

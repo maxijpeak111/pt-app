@@ -28,23 +28,85 @@ PT.dayTargets = date => {
   return Object.assign(base, { kcal: base.kcal + extra, c: base.c ? base.c + Math.round(extra / 4) : 0, extra });
 };
 
+/* ---------- actual totals vs goals ---------- */
+// What you actually had: the totals you type at the end of the day; any you leave blank come from meals you logged.
+PT.MACROS = [['kcal', 'Calories', 'kcal'], ['p', 'Protein', 'g'], ['c', 'Carbs', 'g'], ['f', 'Fat', 'g']];
+PT.fuelActual = date => {
+  const typed = PT.state.fuelActual[date] || {}, log = PT.state.foodLog[date] || [], meals = PT.sumMacros(log);
+  const o = {};
+  PT.MACROS.forEach(([k]) => { o[k] = typed[k] !== '' && typed[k] != null ? +typed[k] : log.length ? Math.round(meals[k]) : null; });
+  return o;
+};
+PT.macroOk = (actual, target) => !!target && actual != null && Math.abs(actual - target) <= target * 0.1;
+// true = every macro you have a goal for is within 10%; false = logged but off; null = not logged / no goals.
+PT.macrosMet = date => {
+  const t = PT.dayTargets(date), a = PT.fuelActual(date);
+  const ks = PT.MACROS.map(m => m[0]).filter(k => +t[k]);
+  if (!ks.length || ks.some(k => a[k] == null)) return null;
+  return ks.every(k => PT.macroOk(a[k], +t[k]));
+};
+// Last 14 days of eating success, plus your current streak of days met.
+PT.fuelHistory = () => {
+  const days = []; for (let i = 13; i >= 0; i--) days.push(PT.addDays(PT.today(), -i));
+  const res = days.map(d => ({ d, met: PT.macrosMet(d) }));
+  let streak = 0;
+  for (let i = res.length - 1; i >= 0; i--) {
+    if (res[i].met === true) streak++;
+    else if (i === res.length - 1 && res[i].met === null) continue; // today not logged yet
+    else break;
+  }
+  return { res, streak, met: res.filter(x => x.met === true).length };
+};
+PT.fuelTracker = () => {
+  const hst = PT.fuelHistory();
+  return h('div', {},
+    h('div', { class: 'row between small' }, h('b', {}, 'Macros met: ' + hst.met + ' of the last 14 days'), h('span', { class: hst.streak ? 'ok' : 'muted', style: { fontWeight: 800 } }, hst.streak ? hst.streak + ' day streak' : 'no streak yet')),
+    h('div', { class: 'dots' }, hst.res.map(x => h('i', { class: x.met === true ? 'met' : x.met === false ? 'miss' : '', title: x.d }))),
+    h('div', { class: 'small muted' }, 'Green = all macros within 10% of your goal · red outline = logged but off · grey = not logged'));
+};
+const statusText = (a, t, unit) => {
+  if (!+t) return '';
+  if (a == null) return '';
+  if (PT.macroOk(a, +t)) return '✓';
+  const d = Math.round(a - t); return (d > 0 ? '+' : '') + d + ' ' + unit;
+};
+// Goals pre-filled and faded in each box; type what you actually had. onChange() runs after every edit.
+PT.fuelBlock = (date, onChange) => {
+  const t = PT.dayTargets(date), log = PT.state.foodLog[date] || [], meals = PT.sumMacros(log);
+  const rows = PT.MACROS.map(([k, label, unit]) => {
+    const typed = (PT.state.fuelActual[date] || {})[k];
+    const st = h('span', { class: 'small', style: { fontWeight: 800, textAlign: 'right' } });
+    const upd = () => { const a = PT.fuelActual(date)[k]; st.textContent = statusText(a, t[k], unit); st.className = 'small ' + (PT.macroOk(a, +t[k]) ? 'ok' : 'red'); };
+    const inp = PT.numInput(typed != null && typed !== '' ? typed : (log.length ? Math.round(meals[k]) : ''), v => {
+      const fa = PT.state.fuelActual[date] = PT.state.fuelActual[date] || {}; fa[k] = v; PT.save(); upd(); if (onChange) onChange();
+    }, +t[k] ? String(t[k]) : '', '1');
+    upd();
+    return h('div', { class: 'macro-row' }, h('div', {}, h('b', {}, label), h('div', { class: 'small muted' }, +t[k] ? 'goal ' + t[k] + ' ' + unit : 'no goal set')), inp, st);
+  });
+  const hasT = PT.MACROS.some(([k]) => +t[k]);
+  return h('div', {},
+    h('div', { class: 'small', style: { marginBottom: '6px' } },
+      t.load ? [h('b', { class: 'red' }, 'Training load ' + t.load + '/10'), t.extra ? ' · goal up ' + t.extra + ' kcal' : ''] : h('b', {}, 'Rest day'),
+      h('span', { class: 'muted' }, ' · faded numbers are your goals, type what you actually had')),
+    rows,
+    log.length ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Boxes start from the meals you logged; type over them if needed.') : null,
+    !hasT ? h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => PT.targetsSheet() }, 'Set my daily goals') : null);
+};
+PT.fuelSummary = date => {
+  const t = PT.dayTargets(date), a = PT.fuelActual(date), m = PT.macrosMet(date);
+  return (a.kcal != null ? a.kcal : '–') + (t.kcal ? ' / ' + t.kcal : '') + ' kcal' + (m === true ? ' · ✓ macros met' : m === false ? ' · macros off target' : '');
+};
+
 PT.views.fuel = function (parts) {
   if (parts[1] === 'foods') return foodsView();
   if (parts[1] === 'meals') return mealsView();
   return diaryView(parts[1] || PT.today());
 };
 
-function meter(label, val, target, unit) {
-  const pct = target ? Math.min(100, val / target * 100) : 0;
-  return h('div', { style: { marginBottom: '10px' } },
-    h('div', { class: 'row between small' }, h('b', {}, label), h('span', { class: 'muted' }, g0(val) + (target ? ' / ' + target : '') + ' ' + unit)),
-    h('div', { class: 'bar' + (target && val >= target ? ' ok' : '') }, h('i', { style: { width: pct + '%' } })));
-}
 
 /* ---------- daily diary ---------- */
 function diaryView(date) {
-  const log = PT.state.foodLog[date] || [], t = PT.dayTargets(date), tot = PT.sumMacros(log);
-  const hasTargets = t.kcal || t.p || t.c || t.f;
+  const log = PT.state.foodLog[date] || [];
   const bySlot = {};
   log.forEach(e => (bySlot[e.slot || 'other'] = bySlot[e.slot || 'other'] || []).push(e));
   const order = PT.SLOTS.map(x => x[0]).concat('other').filter(k => bySlot[k]);
@@ -54,13 +116,10 @@ function diaryView(date) {
       h('button', { class: 'btn ghost small', onclick: () => { location.hash = '#/fuel/' + PT.addDays(date, -1); } }, '‹'),
       h('div', { class: 'week-title' }, date === PT.today() ? 'Today · ' + PT.niceDate(date) : PT.niceDate(date)),
       h('button', { class: 'btn ghost small', onclick: () => { location.hash = '#/fuel/' + PT.addDays(date, 1); } }, '›')),
-    h('div', { class: 'card' },
-      h('div', { class: 'small', style: { marginBottom: '10px' } },
-        t.load ? [h('b', { class: 'red' }, 'Training load ' + t.load + '/10'), t.extra ? ' · target up ' + t.extra + ' kcal' : ''] : h('b', {}, 'Rest day')),
-      meter('Calories', tot.kcal, t.kcal, 'kcal'), meter('Protein', tot.p, t.p, 'g'),
-      meter('Carbs', tot.c, t.c, 'g'), meter('Fat', tot.f, t.f, 'g'),
-      !hasTargets ? h('div', { class: 'small muted' }, 'No targets set yet. Tap Targets below.') : null),
-    h('button', { class: 'btn block', onclick: () => PT.addMealSheet(date) }, '+ Add meal'),
+    h('div', { class: 'card' }, PT.fuelBlock(date)),
+    h('div', { class: 'card' }, PT.fuelTracker()),
+    h('h2', {}, 'Meals (optional)'),
+    h('button', { class: 'btn ghost block', onclick: () => PT.addMealSheet(date) }, '+ Add meal'),
     log.length ? order.map(k => {
       const sub = PT.sumMacros(bySlot[k]);
       return [h('h2', {}, slotLabel(k) + ' · ' + g0(sub.kcal) + ' kcal'),
@@ -74,7 +133,7 @@ function diaryView(date) {
     h('div', { class: 'grid3' },
       h('a', { class: 'btn ghost small', href: '#/fuel/foods' }, 'My foods'),
       h('a', { class: 'btn ghost small', href: '#/fuel/meals' }, 'Usual meals'),
-      h('button', { class: 'btn ghost small', onclick: targetsSheet }, 'Targets')));
+      h('button', { class: 'btn ghost small', onclick: targetsSheet }, 'Goals')));
 }
 
 function addEntry(date, entry) {
@@ -265,6 +324,7 @@ function mealForm(meal) {
 }
 
 /* ---------- targets ---------- */
+PT.targetsSheet = () => targetsSheet();
 function targetsSheet() {
   const s = PT.state.settings, t = Object.assign({}, s.targets);
   let kg = s.bodyKg, hard = s.hardKcal;

@@ -92,3 +92,22 @@ button.back{background:none;border:0;padding:0;font:inherit;cursor:pointer}
 .stepper .btn{min-width:42px;font-size:18px}
 .seg.tight{gap:2px}.seg.tight button{padding:9px 0;min-width:0}
 details.fold{margin:0}details.fold>summary{list-style:none;color:var(--text);font-size:16px}details.fold>summary::-webkit-details-marker{display:none}details.fold>summary .row>span::after{content:' ▸';color:var(--red2)}details.fold[open]>summary .row>span::after{content:' ▾'}
+/* drop boxes */
+details.section{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin:0 0 10px;padding:0}
+details.section>summary{list-style:none;display:flex;align-items:center;gap:10px;padding:14px;cursor:pointer;color:var(--text);font-size:16px;user-select:none}
+details.section>summary::-webkit-details-marker{display:none}
+details.section .sec-title{font-weight:900;text-transform:uppercase;letter-spacing:.06em;font-size:15px}
+details.section .chev::after{content:'▸';color:var(--red2);font-size:20px;font-weight:900}
+details.section[open]>summary .chev::after{content:'▾'}
+details.section>.sec-body{padding:0 14px 14px}
+details.section .card,details.section details.section{background:var(--panel2)}
+details.section.sub .sec-title{font-size:14px}
+.reminder{border-color:var(--red)}
+.macro-row{display:grid;grid-template-columns:1fr 104px 76px;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.macro-row:last-child{border-bottom:0}
+.macro-row input::placeholder{color:#6b7280}
+.dots{display:flex;gap:4px;margin:8px 0 4px}
+.dots>i{flex:1;height:14px;border-radius:4px;background:var(--panel2);border:1px solid var(--line)}
+.dots>i.met{background:var(--ok);border-color:var(--ok)}
+.dots>i.miss{background:transparent;border-color:var(--red)}
+details.section .card input,details.section .card textarea,details.section .macro-row input{background:var(--bg)}
