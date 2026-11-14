@@ -28,12 +28,17 @@ PT.weekStats = ws => {
   let planned = 0, done = 0; const mins = { sauna: 0, bike: 0, walk: 0 };
   days.forEach(d => {
     const r = s.recoveryLog[d] || {}; Object.keys(mins).forEach(k => mins[k] += +r[k] || 0);
-    if (!PT.dayExs(d).length) return;
+    if (!PT.dayExs(d).length || d > PT.today()) return; // only days that have happened count
     const tags = PT.dayTags(d);
     PT.PHASES.forEach(([ph]) => { const { list, SHOW } = PT.stretchList(d, tags, ph); const shown = list.slice(0, SHOW); planned += shown.length; done += shown.filter(x => (r.done || {})[x.id]).length; });
   });
   const met = days.map(d => PT.macrosMet(d));
-  return { logs, before, days, sessions: logs.length, runKm: PT.r1(runKm(logs)), swimM: Math.round(swimM(logs)), planned, done,
+  // planned vs done, from each day's exercises (a session = all strength moves that day, or one run / swim / bike)
+  const units = days.flatMap(d => PT.daySessions(d));
+  const runs = units.filter(u => u.sport === 'run'), swims = units.filter(u => u.sport === 'swim');
+  const planKm = list => list.reduce((a, u) => a + PT.entryKm(u.items[0], 'plan'), 0);
+  return { logs, before, days, sessions: units.filter(u => u.done).length, sessionsPlanned: units.length,
+    runsDone: runs.filter(u => u.done).length, runsPlanned: runs.length, runKmPlan: PT.r1(planKm(runs)), swimMPlan: Math.round(planKm(swims) * 1000), runKm: PT.r1(runKm(logs)), swimM: Math.round(swimM(logs)), planned, done,
     recPct: planned ? Math.round(done / planned * 100) : null, mins, met, metDays: met.filter(x => x === true).length, fuelDays: met.filter(x => x !== null).length };
 };
 // The standout of the week: a new best beats everything, then volume.
@@ -53,7 +58,7 @@ PT.views.progress = function (parts) {
   if (!pWeek) pWeek = PT.weekStart(PT.today());
   const w = PT.weekStats(pWeek), last = PT.weekStats(PT.addDays(pWeek, -7));
   const best = bestStat(w);
-  const tile = (value, label, note) => h('div', { class: 'card', style: { margin: 0 } }, h('div', { class: 'stat' }, value), h('div', { class: 'small' }, h('b', {}, label)), note ? h('div', { class: 'small muted' }, note) : null);
+  const tile = (value, label, note) => h('div', { class: 'card', style: { margin: 0 } }, h('div', { class: 'stat', style: { fontSize: String(value).length > 8 ? '20px' : '' } }, value), h('div', { class: 'small' }, h('b', {}, label)), note ? h('div', { class: 'small muted' }, note) : null);
   const lifts = [...new Set(w.logs.flatMap(l => (l.exercises || []).filter(e => e.kind === 'strength' && +e.kg).map(e => e.name)))].sort();
   return h('div', {},
     h('h1', {}, 'Progress'),
@@ -65,9 +70,9 @@ PT.views.progress = function (parts) {
     h('div', { class: 'card reminder' }, h('div', { class: 'small red', style: { fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em' } }, 'Best of the week'),
       best ? [h('div', { class: 'stat', style: { fontSize: '22px', marginTop: '4px' } }, best[1]), h('div', { class: 'small muted' }, best[2])] : h('div', { class: 'small muted', style: { marginTop: '4px' } }, 'Nothing logged this week yet.')),
     h('div', { class: 'grid2', style: { marginTop: '10px' } },
-      tile(w.sessions, 'Sessions', 'last week ' + last.sessions),
-      tile(w.runKm + ' km', 'Run distance', 'last week ' + last.runKm + ' km'),
-      tile(w.swimM + ' m', 'Swim distance', w.swimM ? Math.round(w.swimM / PT.pool()) + ' laps · last week ' + last.swimM + ' m' : 'last week ' + last.swimM + ' m'),
+      tile(w.sessionsPlanned ? w.sessions + ' / ' + w.sessionsPlanned : w.sessions, 'Sessions done', (w.sessionsPlanned ? 'done of planned · ' : '') + 'last week ' + last.sessions),
+      tile(w.runKmPlan ? w.runKm + ' / ' + w.runKmPlan + ' km' : w.runKm + ' km', 'Run distance', (w.runsPlanned ? w.runsDone + ' of ' + w.runsPlanned + ' runs · ' : '') + 'last week ' + last.runKm + ' km'),
+      tile(w.swimMPlan ? w.swimM + ' / ' + w.swimMPlan + ' m' : w.swimM + ' m', 'Swim distance', (w.swimM ? Math.round(w.swimM / PT.pool()) + ' laps · ' : '') + 'last week ' + last.swimM + ' m'),
       tile(w.recPct == null ? '–' : w.recPct + '%', 'Recovery done', w.planned ? w.done + ' of ' + w.planned + ' warm-ups & stretches' : 'no training days yet')),
     h('div', { class: 'small muted', style: { margin: '8px 2px 0' } }, 'Sauna ' + w.mins.sauna + ' min · bike ' + w.mins.bike + ' min · walk ' + w.mins.walk + ' min'),
     h('h2', {}, 'Right macros'),

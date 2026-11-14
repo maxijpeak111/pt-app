@@ -54,7 +54,22 @@ function dayCard(date) {
     h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
     title ? h('div', { class: 'day-line' }, h('b', {}, title), done ? h('span', { class: done === exs.length ? 'ok' : 'muted' }, ' · ' + (done === exs.length ? 'done ✓' : done + ' of ' + exs.length + ' done')) : null)
       : h('div', { class: 'day-line muted' }, 'Rest day'),
+    planLine(date) ? h('div', { class: 'day-line small muted' }, planLine(date)) : null,
     rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text)));
+}
+// Short "what's planned" line for the week list, e.g. "Treadmill run 5 km · Strength 4 exercises"; after logging "3/5 km".
+const amt = (en, x) => en.kind === 'laps' ? (+x.sets || 1) + '×' + (+x.laps || 0) + ' laps' : en.kind === 'cardio' ? (+x.distance || 0) + ' ' + (en.unit || 'km') : en.kind === 'time' ? (+x.rounds || 0) + ' rounds' : '';
+function planLine(date) {
+  return PT.daySessions(date).map(u => {
+    if (u.kind === 'strength') return 'Strength ' + u.items.length + (u.items.length === 1 ? ' exercise' : ' exercises') + (u.done ? ' ✓' : '');
+    const en = u.items[0], pl = PT.hasPlan(en) ? en.plan : null, ac = PT.hasActual(en) ? en.actual : null;
+    if (u.kind === 'time') return u.items.map(e => e.name).join(', ') + (pl ? ' ' + amt(en, pl) : '') + (u.done ? ' ✓' : '');
+    if (ac && pl) {
+      if (amt(en, ac) === amt(en, pl)) return en.name + ' ' + amt(en, ac) + ' ✓';
+      return en.name + ' ' + (en.kind === 'cardio' ? (+ac.distance || 0) + '/' + amt(en, pl) : en.kind === 'laps' ? (+ac.sets || 1) + '×' + (+ac.laps || 0) + '/' + amt(en, pl) : amt(en, ac) + ' of ' + amt(en, pl)) + ' ✓';
+    }
+    return en.name + (ac ? ' ' + amt(en, ac) + ' ✓' : pl ? ' ' + amt(en, pl) : '');
+  }).join(' · ');
 }
 
 function copyShifts() {
@@ -69,7 +84,6 @@ function copyShifts() {
 
 
 /* ---------- day: before → exercises → after, then the rest of the day ---------- */
-const openState = {}; // remembers if the Intensity dropdown is open while you work on a day
 const gap = px => h('div', { style: { height: px + 'px' } });
 
 /* ---------- notes that mention another day ---------- */
@@ -219,8 +233,7 @@ function training(date, redraw) {
     PT.stretchBlock(date, tags, 'before', true),
     exs.length ? exs.map(en => entryCard(date, en, redraw)) : h('div', { class: 'empty' }, 'Nothing yet. Tap Add exercises and pick from the folders: Chest, Back, Legs, Swim, Run…'),
     h('button', { class: 'btn block', onclick: () => addExercises(date, redraw) }, '+ Add exercises'),
-    exs.length ? intensityBox(date, redraw) : null,
-    exs.length ? effortBox(date) : null,
+    exs.length && date <= PT.today() ? effortBox(date) : null,
     gap(10),
     PT.stretchBlock(date, tags, 'after', true),
     PT.activityBlock(date)
@@ -236,10 +249,11 @@ function addExercises(date, redraw) {
 }
 
 // One exercise: the target (a guide) and what you actually did (what counts).
+// One exercise: what you plan (typed by you) and, from the day itself, what you actually did (what gets logged).
 function entryCard(date, en, redraw) {
-  const t = PT.entryTarget(en), last = PT.lastDone(en, date), lib = PT.libEx(en);
-  const a = en.actual || {};
-  const pill = h('span', { class: 'pill done' }, '✓ logged');
+  const lib = PT.libEx(en), last = PT.lastDone(en, date), canDo = date <= PT.today();
+  const p = en.plan || (en.plan = {}), a = en.actual || {};
+  const pill = h('span', { class: 'pill done' }, '✓ done');
   const extra = h('div', { class: 'small muted', style: { marginTop: '6px' } });
   function status() {
     pill.style.display = PT.hasActual(en) ? '' : 'none';
@@ -248,69 +262,45 @@ function entryCard(date, en, redraw) {
     if (en.kind === 'cardio' && +a.distance && +a.time) txt = 'Pace ' + PT.fmtDur(Math.round(a.time / (en.unit === 'm' ? a.distance / 100 : a.distance))) + (en.unit === 'm' ? ' /100m' : ' /km');
     extra.textContent = txt;
   }
-  const save = () => { en.actual = a; PT.syncDayLog(date); PT.save(); status(); };
-  const tv = k => t && t[k] !== '' && t[k] != null && +t[k] ? t[k] : '';
-  const num = (k, label, step) => PT.field(label, PT.numInput(a[k], v => { a[k] = v; save(); }, String(tv(k)), step));
-  const dur = (k, label, ph) => PT.field(label, PT.durInput(a[k], v => { a[k] = v; save(); }, tv(k) ? PT.fmtDur(tv(k)) : ph));
-  const fields = en.kind === 'laps' ? h('div', { class: 'grid3' }, num('sets', 'Sets', '1'), num('laps', 'Laps', '1'), dur('time', 'Time', 'm:ss'))
-    : en.kind === 'cardio' ? h('div', { class: 'grid2' }, num('distance', 'Distance (' + (en.unit || 'km') + ')'), dur('time', 'Time', 'h:mm:ss'))
-    : en.kind === 'time' ? h('div', { class: 'grid2' }, num('rounds', 'Rounds', '1'), dur('time', 'Time per round', 'm:ss'))
-    : h('div', { class: 'grid3' }, num('sets', 'Sets', '1'), num('reps', 'Reps', '1'), num('kg', 'Kg', '0.5'));
+  const savePlan = () => { en.plan = p; PT.save(); };
+  const saveDone = () => { en.actual = a; PT.syncDayLog(date); PT.save(); status(); };
+  // the same boxes for plan and done; done boxes show the plan faded so you only type what was different
+  const boxes = (o, save, ph) => {
+    const num = (k, label, step) => PT.field(label, PT.numInput(o[k], v => { o[k] = v; save(); }, ph && +ph[k] ? String(ph[k]) : '', step));
+    const dur = (k, label, def) => PT.field(label, PT.durInput(o[k], v => { o[k] = v; save(); }, ph && +ph[k] ? PT.fmtDur(ph[k]) : def));
+    return en.kind === 'laps' ? h('div', { class: 'grid3' }, num('sets', 'Sets', '1'), num('laps', 'Laps', '1'), dur('time', 'Time', 'm:ss'))
+      : en.kind === 'cardio' ? h('div', { class: 'grid2' }, num('distance', 'Distance (' + (en.unit || 'km') + ')'), dur('time', 'Time', 'h:mm:ss'))
+      : en.kind === 'time' ? h('div', { class: 'grid2' }, num('rounds', 'Rounds', '1'), dur('time', 'Time per round', 'm:ss'))
+      : h('div', { class: 'grid3' }, num('sets', 'Sets', '1'), num('reps', 'Reps', '1'), num('kg', 'Kg', '0.5'));
+  };
+  const range = PT.hasRange(lib) && (lib.kind || 'strength') === en.kind
+    ? h('div', { class: 'small muted', style: { marginTop: '4px' } }, 'Your range: ' + PT.exText(PT.atLevel(lib, 1)) + '  →  max ' + PT.exText(PT.atLevel(lib, 10)))
+    : lib ? h('div', { class: 'small muted', style: { marginTop: '4px' } }, h('button', { class: 'back small', style: { color: 'var(--muted)', margin: 0, textDecoration: 'underline' }, onclick: () => {
+        const box = h('div', {}); const sh = PT.sheet('Min / max: ' + lib.name, box); PT.rangeForm(box, lib, () => { sh.close(); redraw(); });
+      } }, 'Set your min/max (optional)')) : null;
   const el = h('div', { class: 'card' },
     h('div', { class: 'row between', style: { flexWrap: 'nowrap' } },
-      h('h3', { class: 'grow' }, en.name),
-      pill,
+      h('h3', { class: 'grow' }, en.name), pill,
       h('button', { class: 'btn ghost small', 'aria-label': 'Remove ' + en.name, onclick: () => {
         const go = () => { const d = ensureDay(date); d.exs = d.exs.filter(x => x.id !== en.id); PT.syncDayLog(date); PT.save(); redraw(); };
         if (PT.hasActual(en)) PT.confirm('Remove ' + en.name + ' and what you logged for it?', 'Remove', go); else go();
       } }, '✕')),
-    t ? h('div', { class: 'small', style: { marginTop: '4px' } }, h('span', { class: 'muted' }, 'Target · L' + (en.level || 7) + '  '), PT.exText(t))
-      : h('div', { class: 'small muted', style: { marginTop: '4px' } }, 'No target. ',
-          lib ? h('button', { class: 'back small', style: { color: 'var(--red2)', margin: 0 }, onclick: () => {
-            const box = h('div', {}); const sh = PT.sheet('Min / max: ' + lib.name, box);
-            PT.rangeForm(box, lib, () => { sh.close(); redraw(); });
-          } }, 'Set min/max (optional)') : null),
-    last ? h('div', { class: 'small muted' }, 'Last time (' + PT.niceDate(last.date) + '): ' + PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, last.ex))) : null,
-    gap(8), h('label', { class: 'f', style: { color: 'var(--red2)' } }, 'What you did'), fields, extra,
-    t ? h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => {
-      (PT.FIELDS[en.kind] || []).forEach(k => { if (tv(k)) a[k] = t[k]; });
-      save(); el.replaceWith(entryCard(date, en, redraw)); PT.toast('Filled in the target');
-    } }, 'Did the target ✓') : null);
+    last ? h('div', { class: 'small muted', style: { marginTop: '2px' } }, 'Last time (' + PT.niceDate(last.date) + '): ' + PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, last.ex))) : null,
+    gap(8), h('label', { class: 'f' }, 'Planned'), boxes(p, savePlan, null), range,
+    canDo ? [gap(10), h('label', { class: 'f', style: { color: 'var(--red2)' } }, 'Done'), boxes(a, saveDone, p), extra,
+      PT.hasPlan(en) ? h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => {
+        (PT.FIELDS[en.kind] || []).forEach(k => { if (+p[k]) a[k] = p[k]; });
+        saveDone(); el.replaceWith(entryCard(date, en, redraw)); PT.toast('Logged as planned');
+      } }, 'Did the plan ✓') : null] : null);
   status();
   return el;
-}
-
-// Intensity: tucked away. Changes the suggested targets only.
-function intensityBox(date, redraw) {
-  const exs = PT.dayExs(date);
-  const lv = PT.dayLevel(date);
-  const label = h('span', {}, 'Set all to level ' + lv);
-  const slider = h('input', { type: 'range', min: 1, max: 10, step: 1, value: lv });
-  slider.addEventListener('input', () => { label.textContent = 'Set all to level ' + slider.value; });
-  slider.addEventListener('change', () => { exs.forEach(e => e.level = +slider.value); PT.syncDayLog(date); PT.save(); redraw(); });
-  const clamp = v => Math.min(10, Math.max(1, v));
-  const det = h('details', { open: !!openState[date] },
-    h('summary', {}, 'Intensity · level ' + lv + '/10'),
-    h('p', { class: 'small muted' }, 'Only changes the suggested targets. Exercises without a min/max have none.'),
-    h('div', { class: 'red', style: { fontWeight: 800 } }, label), slider,
-    h('div', { class: 'row between small muted' }, h('span', {}, 'Easy day'), h('span', {}, 'Feeling strong')),
-    exs.map(en => {
-      const t = PT.entryTarget(en);
-      const step = d => { en.level = clamp((en.level || 7) + d); PT.syncDayLog(date); PT.save(); redraw(); };
-      return h('div', { class: 'stepper' },
-        h('button', { class: 'btn ghost small', onclick: () => step(-1) }, '−'),
-        h('div', { class: 'grow' }, h('b', {}, en.name), h('span', { class: 'red small' }, '  L' + (en.level || 7)), h('div', { class: 'small muted' }, t ? PT.exText(t) : 'no min/max set')),
-        h('button', { class: 'btn ghost small', onclick: () => step(1) }, '+'));
-    }));
-  det.addEventListener('toggle', () => { openState[date] = det.open; });
-  return h('div', { class: 'card', style: { marginTop: '10px' } }, det);
 }
 
 function effortBox(date) {
   const day = PT.state.plan[date] || {};
   const opts = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, String(n)]);
   return h('div', { class: 'card', style: { marginTop: '10px' } },
-    h('label', { class: 'f' }, 'How hard did today feel? (1 easy – 10 max)'),
+    h('label', { class: 'f' }, 'How hard was today, after training? (1 easy – 10 max)'),
     (() => { const sg = PT.seg(opts, +day.rpe || 0, v => { ensureDay(date).rpe = v; PT.syncDayLog(date); PT.save(); }); sg.classList.add('tight'); return sg; })());
 }
 })();

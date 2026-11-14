@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -334,6 +334,20 @@ PT.lastDone = (en, beforeDate) => {
   }
   return null;
 };
+/* ---------- planned vs done ---------- */
+// en.plan = what you plan to do (typed by you); en.actual = what you did. Same fields for both (PT.FIELDS).
+PT.hasPlan = en => !!en.plan && (PT.FIELDS[en.kind] || []).some(k => +en.plan[k]);
+// Sessions on a day: all strength moves = 1 strength session, MMA rounds = 1 session, each run / swim / bike = its own.
+// Stretches, sauna and walks are recovery, not sessions.
+PT.daySessions = date => {
+  const out = [], exs = PT.dayExs(date);
+  const group = (kind, label) => { const g = exs.filter(e => e.kind === kind); if (g.length) out.push({ label, kind, items: g, done: g.some(PT.hasActual) }); };
+  group('strength', 'Strength'); group('time', 'Rounds');
+  exs.filter(e => e.kind === 'cardio' || e.kind === 'laps').forEach(e => out.push({ label: e.name, kind: e.kind, sport: e.kind === 'laps' ? 'swim' : e.sport, items: [e], done: PT.hasActual(e) }));
+  return out;
+};
+const metres = (x, kind, unit) => kind === 'laps' ? (+x.sets || 1) * (+x.laps || 0) * PT.pool() : unit === 'm' ? +x.distance || 0 : (+x.distance || 0) * 1000;
+PT.entryKm = (en, which) => { const x = en[which]; return x ? metres(x, en.kind, en.unit) / 1000 : 0; };
 PT.dayLevel = date => { const xs = PT.dayExs(date); return xs.length ? Math.round(xs.reduce((a, e) => a + (+e.level || 7), 0) / xs.length) : 0; };
 // Keep one log per training day, built from what you actually did. Progress charts read these logs.
 PT.syncDayLog = date => {
@@ -502,6 +516,17 @@ PT.migrate3 = function () {
   st.v = 3; PT.save();
 };
 PT.migrate3();
+
+/* v4: planned amounts. Upcoming exercises that relied on a min/max level get that target written in as their plan. */
+PT.migrate4 = function () {
+  const st = PT.state; if ((st.v || 1) >= 4) return;
+  const today = PT.today();
+  Object.keys(st.plan).forEach(d => (st.plan[d].exs || []).forEach(en => {
+    if (d >= today && !en.plan && !PT.hasActual(en)) { const t = PT.entryTarget(en); if (t) en.plan = (PT.FIELDS[en.kind] || []).reduce((a, k) => { if (+t[k]) a[k] = t[k]; return a; }, {}); }
+  }));
+  st.v = 4; PT.save();
+};
+PT.migrate4();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {

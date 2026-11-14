@@ -14,10 +14,15 @@ const qtyText = (f, qty) => f && +f.portionG ? g0(qty * f.portionG) + ' g' : (qt
 
 /* ---------- how hard the day is → calorie target ---------- */
 // Training load 0–10: the average level of the day's exercises, plus 1 for every 4 exercises beyond the first 4.
+// Training load 0–10 for fuelling. Sports-nutrition guidance scales carbohydrate with the day's training volume
+// (roughly 3–5 g/kg light, 5–7 g/kg ~1 h, 6–10 g/kg 1–3 h a day), so the number of sessions sets the load:
+// rest day 0, one session 5, two or more 10. Once you rate how hard the day was (1–10, after training),
+// that nudges it: a 6 keeps it, harder raises it, easier lowers it.
 PT.dayLoad = date => {
-  const n = PT.dayExs(date).length;
+  const n = PT.daySessions(date).length;
   if (!n) return 0;
-  return Math.min(10, PT.dayLevel(date) + Math.floor(Math.max(0, n - 4) / 4));
+  const base = n >= 2 ? 10 : 5, rpe = +((PT.state.plan[date] || {}).rpe) || 0;
+  return rpe ? Math.min(10, Math.max(1, Math.round(base * rpe / 6))) : base;
 };
 // Goals rise with how hard the day is: rest-day goals at load 0, your hardest-day goals at load 10,
 // and every training day in between (e.g. load 5 = halfway). Each macro scales on its own.
@@ -97,7 +102,7 @@ PT.fuelBlock = (date, onChange) => {
   const hasT = PT.MACROS.some(([k]) => +t[k]);
   return h('div', {},
     h('div', { class: 'small', style: { marginBottom: '6px' } },
-      t.load ? [h('b', { class: 'red' }, 'Training level ' + t.load + '/10'), t.extra > 0 ? ' · goals raised for training (+' + t.extra + ' kcal)' : ''] : h('b', {}, 'Rest day goals'),
+      t.load ? [h('b', { class: 'red' }, PT.daySessions(date).length + (PT.daySessions(date).length === 1 ? ' session' : ' sessions') + ((PT.state.plan[date] || {}).rpe ? ' · rated ' + PT.state.plan[date].rpe + '/10' : '')), t.extra > 0 ? ' · goals raised for training (+' + t.extra + ' kcal)' : ''] : h('b', {}, 'Rest day goals'),
       h('span', { class: 'muted' }, ' · faded numbers are your goals, type what you actually had')),
     rows,
     log.length ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Boxes start from the meals you logged; type over them if needed.') : null,
@@ -309,7 +314,7 @@ function mealsView() {
   return h('div', {}, PT.back('#/library', 'Library'), h('h1', {}, 'Meal library'),
     h('div', { class: 'card tap', onclick: () => targetsSheet() },
       h('div', { class: 'row between' }, h('b', {}, 'Daily macro goals'), h('span', { class: 'red' }, '›')),
-      h('div', { class: 'small muted' }, 'Rest day: ' + line(t)), h('div', { class: 'small muted' }, 'Hardest day: ' + line(mx))),
+      h('div', { class: 'small muted' }, 'Rest day: ' + line(t)), h('div', { class: 'small muted' }, 'Two-session day: ' + line(mx))),
     h('a', { class: 'card tap', href: '#/library/foods' }, h('div', { class: 'row between' }, h('b', {}, 'My foods · ' + PT.state.foods.length), h('span', { class: 'red' }, '›')),
       h('div', { class: 'small muted' }, 'Each food with your usual portion and its macros')),
     h('h2', {}, 'Meals'),
@@ -364,21 +369,20 @@ function targetsSheet() {
     PT.field('Carbs g', PT.numInput(o.c, v => o.c = v)), PT.field('Fat g', PT.numInput(o.f, v => o.f = v)));
   function draw() {
     PT.fill(box,
-      h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your goals rise with how hard each day is. Rest days use the first set; your hardest day (training level 10) uses the second; every other day sits in between based on that day\'s exercise levels. A common starting point is about 1.6 to 2.2 g of protein per kg of body weight. A registered dietitian can tailor this to you.'),
+      h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your goals rise with how much you train. Rest days use the first set, days with two or more sessions the second, and one-session days sit halfway. Rating how hard a day was afterwards nudges it up or down.'),
+      h('p', { class: 'small muted' }, 'Based on sports-nutrition guidance (ACSM / Academy of Nutrition and Dietetics / Dietitians of Canada 2016; ISSN 2017): carbs rise with training (about 3–5 g/kg on light days, 5–7 on ~1 h days, 6–10 on 1–3 h days); protein stays fairly steady at 1.4–2.0 g/kg; fat around 1 g/kg (at least 20% of calories). The Suggest buttons use these. A registered sports dietitian can tailor them to you.'),
       h('h3', {}, 'Rest day'),
-      PT.field('Body weight kg (for the suggestion)', PT.numInput(kg, v => kg = v)), gap(8),
+      PT.field('Body weight kg (for the suggestions)', PT.numInput(kg, v => kg = v)), gap(8),
       h('button', { class: 'btn ghost small', onclick: () => {
-        if (!num(t.kcal) || !num(kg)) { PT.toast('Enter rest-day calories and body weight first'); return; }
-        t.p = Math.round(1.8 * num(kg)); t.f = Math.round(num(t.kcal) * 0.25 / 9); t.c = Math.max(0, Math.round((num(t.kcal) - t.p * 4 - t.f * 9) / 4)); draw();
-      } }, 'Suggest split (1.8 g/kg protein, 25% fat)'), gap(10),
+        if (!num(kg)) { PT.toast('Enter your body weight first'); return; }
+        const w = num(kg); t.p = Math.round(1.8 * w); t.c = Math.round(4 * w); t.f = Math.round(1 * w); t.kcal = Math.round((t.p * 4 + t.c * 4 + t.f * 9) / 10) * 10; draw();
+      } }, 'Suggest rest day (P 1.8 · C 4 · F 1 g/kg)'), gap(10),
       row(t),
-      h('h3', { style: { marginTop: '10px' } }, 'Hardest day (level 10)'),
+      h('h3', { style: { marginTop: '10px' } }, 'Two-session day (hardest)'),
       h('button', { class: 'btn ghost small', onclick: () => {
-        if (!num(t.kcal)) { PT.toast('Fill in the rest day first'); return; }
-        // a common pattern: about 25% more energy, mostly from carbs, a little more protein
-        const extra = Math.round(num(t.kcal) * 0.25);
-        m.kcal = num(t.kcal) + extra; m.p = Math.round(num(t.p) * 1.1); m.f = num(t.f); m.c = num(t.c) + Math.max(0, Math.round((extra - (m.p - num(t.p)) * 4) / 4)); draw();
-      } }, 'Suggest (+25% calories, mostly carbs)'), gap(10),
+        if (!num(kg)) { PT.toast('Enter your body weight first'); return; }
+        const w = num(kg); m.p = Math.round(2 * w); m.c = Math.round(8 * w); m.f = Math.round(1 * w); m.kcal = Math.round((m.p * 4 + m.c * 4 + m.f * 9) / 10) * 10; draw();
+      } }, 'Suggest 2-session day (P 2 · C 8 · F 1 g/kg)'), gap(10),
       row(m),
       h('p', { class: 'small muted' }, 'Leave the hardest day empty to keep the same goals every day.'),
       h('button', { class: 'btn block', onclick: () => {
