@@ -185,8 +185,8 @@ function dayView(date) {
   const fuelSum = h('div', { class: 'small muted' }, PT.fuelSummary(date));
   root.append(PT.section('fuel', 'Fuel', fuelSum, [
     PT.fuelBlock(date, () => { fuelSum.textContent = PT.fuelSummary(date); }),
-    h('div', { style: { marginTop: '10px' } }, PT.fuelTracker()),
-    h('a', { class: 'btn ghost small block', style: { marginTop: '10px' }, href: '#/fuel/' + date }, 'Meals & foods ›')]));
+    PT.dayMeals(date),
+    h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => PT.targetsSheet() }, 'Daily macro goals')]));
 
   // notes: lines that mention another day show up on that day
   const firstLine = (day.note || '').split('\n')[0];

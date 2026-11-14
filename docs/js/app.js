@@ -1,11 +1,11 @@
 (function () {
 'use strict';
 const PT = window.PT, h = PT.h;
-const NAV = [['plan', 'Plan'], ['journal', 'Journal'], ['recover', 'Recover'], ['fuel', 'Fuel'], ['more', 'More']];
+const NAV = [['plan', 'Plan'], ['journal', 'Journal'], ['library', 'Library'], ['progress', 'Progress'], ['more', 'More']];
 
 PT.render = function () {
   const parts = (location.hash || '#/plan').replace(/^#\/?/, '').split('/');
-  const key = parts[0] === 'log' ? 'plan' : parts[0] === 'sessions' ? 'more' : parts[0];
+  const key = { log: 'plan', fuel: 'plan', sessions: 'library', recover: 'library' }[parts[0]] || parts[0];
   const view = PT.views[parts[0]] || PT.views.plan;
   let node;
   try { node = view(parts); }

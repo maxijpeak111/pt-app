@@ -21,8 +21,8 @@ const KEY = 'pt.v1';
 function defaults() {
   return {
     v: 1, seeded: false,
-    settings: { minPct: 60, maxPct: 110, poolM: 18, shiftPresets: [], bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
-    sessions: [], plan: {}, logs: [], goals: [], customStretches: [], recoveryLog: {},
+    settings: { minPct: 60, maxPct: 110, poolM: 18, shiftPresets: [], maxTargets: { kcal: '', p: '', c: '', f: '' }, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
+    sessions: [], plan: {}, logs: [], goals: [], customStretches: [], routines: [], recoveryLog: {},
     foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
 }

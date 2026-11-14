@@ -19,13 +19,24 @@ PT.dayLoad = date => {
   if (!n) return 0;
   return Math.min(10, PT.dayLevel(date) + Math.floor(Math.max(0, n - 4) / 4));
 };
-// Rest-day targets are yours; on training days the extra calories (up to your hardest-day number) go to carbs.
+// Goals rise with how hard the day is: rest-day goals at load 0, your hardest-day goals at load 10,
+// and every training day in between (e.g. load 5 = halfway). Each macro scales on its own.
+PT.maxGoals = () => {
+  const s = PT.state.settings, t = s.targets, m = Object.assign({ kcal: '', p: '', c: '', f: '' }, s.maxTargets);
+  // older setting: only "hardest day calories", with the extra going to carbs
+  if (!num(m.kcal) && num(s.hardKcal) > num(t.kcal)) { m.kcal = num(s.hardKcal); if (num(t.c) && !num(m.c)) m.c = num(t.c) + Math.round((num(s.hardKcal) - num(t.kcal)) / 4); }
+  return m;
+};
 PT.dayTargets = date => {
-  const s = PT.state.settings, t = s.targets, load = PT.dayLoad(date);
-  const base = { kcal: num(t.kcal), p: num(t.p), c: num(t.c), f: num(t.f), load, extra: 0 };
-  if (!base.kcal || !num(s.hardKcal) || num(s.hardKcal) <= base.kcal || !load) return base;
-  const extra = Math.round((num(s.hardKcal) - base.kcal) * load / 10 / 10) * 10;
-  return Object.assign(base, { kcal: base.kcal + extra, c: base.c ? base.c + Math.round(extra / 4) : 0, extra });
+  const t = PT.state.settings.targets, mx = PT.maxGoals(), load = PT.dayLoad(date);
+  const o = { load, extra: 0 };
+  ['kcal', 'p', 'c', 'f'].forEach(k => {
+    const rest = num(t[k]), hard = num(mx[k]);
+    const v = hard > rest && rest ? rest + (hard - rest) * load / 10 : rest;
+    o[k] = rest ? (k === 'kcal' ? Math.round(v / 10) * 10 : Math.round(v)) : 0;
+  });
+  o.extra = o.kcal - num(t.kcal);
+  return o;
 };
 
 /* ---------- actual totals vs goals ---------- */
@@ -86,11 +97,20 @@ PT.fuelBlock = (date, onChange) => {
   const hasT = PT.MACROS.some(([k]) => +t[k]);
   return h('div', {},
     h('div', { class: 'small', style: { marginBottom: '6px' } },
-      t.load ? [h('b', { class: 'red' }, 'Training load ' + t.load + '/10'), t.extra ? ' · goal up ' + t.extra + ' kcal' : ''] : h('b', {}, 'Rest day'),
+      t.load ? [h('b', { class: 'red' }, 'Training level ' + t.load + '/10'), t.extra > 0 ? ' · goals raised for training (+' + t.extra + ' kcal)' : ''] : h('b', {}, 'Rest day goals'),
       h('span', { class: 'muted' }, ' · faded numbers are your goals, type what you actually had')),
     rows,
     log.length ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Boxes start from the meals you logged; type over them if needed.') : null,
-    !hasT ? h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => PT.targetsSheet() }, 'Set my daily goals') : null);
+    !hasT ? h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'No goals yet: tap Daily macro goals.') : null);
+};
+// Meals eaten on a day, with + Add meal (from your Meal library or single foods).
+PT.dayMeals = date => {
+  const log = PT.state.foodLog[date] || [];
+  return h('div', { style: { marginTop: '10px' } },
+    log.map(e => h('div', { class: 'card', style: { marginBottom: '6px' } },
+      h('div', { class: 'row between', style: { flexWrap: 'nowrap' } }, h('div', {}, h('b', {}, e.label), h('div', { class: 'small muted' }, slotLabel(e.slot || 'other') + ' · ' + macroLine(e))),
+        h('button', { class: 'btn ghost small', 'aria-label': 'Remove', onclick: () => { PT.state.foodLog[date] = log.filter(x => x.id !== e.id); PT.save(); PT.render(); } }, '✕')))),
+    h('button', { class: 'btn ghost block', onclick: () => PT.addMealSheet(date) }, '+ Add meal'));
 };
 PT.fuelSummary = date => {
   const t = PT.dayTargets(date), a = PT.fuelActual(date), m = PT.macrosMet(date);
@@ -267,9 +287,10 @@ function foodForm(box, existing, group, onSaved, onBack) {
 }
 
 /* ---------- my foods ---------- */
+PT.foodsView = () => foodsView();
 function foodsView() {
   const open = f => { const box = h('div', {}); const sh = PT.sheet(f ? 'Edit food' : 'New food', box); foodForm(box, f, null, () => { sh.close(); PT.render(); }); };
-  return h('div', {}, PT.back('#/fuel', 'Fuel'), h('h1', {}, 'My foods'),
+  return h('div', {}, PT.back('#/library/meals', 'Meal library'), h('h1', {}, 'My foods'),
     h('p', { class: 'muted small' }, 'Each food remembers your usual portion and its macros, so you only type them once.'),
     h('button', { class: 'btn block', onclick: () => open(null) }, '+ New food'),
     PT.FOOD_GROUPS.map(([k, l]) => {
@@ -281,16 +302,25 @@ function foodsView() {
 }
 
 /* ---------- usual meals ---------- */
+PT.mealsView = () => mealsView();
 function mealsView() {
-  return h('div', {}, PT.back('#/fuel', 'Fuel'), h('h1', {}, 'Usual meals'),
-    h('p', { class: 'muted small' }, 'Combinations you eat often. Make one by ticking "Save as a usual meal" when you add a meal, or build one here.'),
-    h('button', { class: 'btn block', onclick: () => mealForm(null) }, '+ New usual meal'), gap(12),
+  const t = PT.state.settings.targets, mx = PT.maxGoals();
+  const line = o => num(o.kcal) ? num(o.kcal) + ' kcal · P ' + num(o.p) + ' · C ' + num(o.c) + ' · F ' + num(o.f) : 'not set';
+  return h('div', {}, PT.back('#/library', 'Library'), h('h1', {}, 'Meal library'),
+    h('div', { class: 'card tap', onclick: () => targetsSheet() },
+      h('div', { class: 'row between' }, h('b', {}, 'Daily macro goals'), h('span', { class: 'red' }, '›')),
+      h('div', { class: 'small muted' }, 'Rest day: ' + line(t)), h('div', { class: 'small muted' }, 'Hardest day: ' + line(mx))),
+    h('a', { class: 'card tap', href: '#/library/foods' }, h('div', { class: 'row between' }, h('b', {}, 'My foods · ' + PT.state.foods.length), h('span', { class: 'red' }, '›')),
+      h('div', { class: 'small muted' }, 'Each food with your usual portion and its macros')),
+    h('h2', {}, 'Meals'),
+    h('p', { class: 'muted small' }, 'Meals you eat often. Add them to any day from the Fuel box on that day.'),
+    h('button', { class: 'btn block', onclick: () => mealForm(null) }, '+ New meal'), gap(12),
     PT.state.meals.length ? PT.state.meals.map(m => h('div', { class: 'card tap', onclick: () => mealForm(m) },
       h('b', {}, m.name), h('div', { class: 'small' }, m.items.map(it => { const f = food(it.foodId); return f ? f.name + (qtyText(f, it.qty) ? ' ' + qtyText(f, it.qty) : '') : null; }).filter(Boolean).join(' + ')),
       h('div', { class: 'small muted' }, macroLine(PT.mealTotals(m))))) : h('div', { class: 'empty' }, 'No usual meals yet.'));
 }
 function mealForm(meal) {
-  if (!PT.state.foods.length) { PT.toast('Add some foods first'); location.hash = '#/fuel/foods'; return; }
+  if (!PT.state.foods.length) { PT.toast('Add some foods first'); location.hash = '#/library/foods'; return; }
   const d = meal ? JSON.parse(JSON.stringify(meal)) : { id: PT.uid(), name: '', items: [{ foodId: PT.state.foods[0].id, qty: 1 }] };
   const box = h('div', {}), tot = h('div', { class: 'stat' });
   const refreshTotals = () => { tot.textContent = macroLine(PT.mealTotals(d)); };
@@ -326,25 +356,37 @@ function mealForm(meal) {
 /* ---------- targets ---------- */
 PT.targetsSheet = () => targetsSheet();
 function targetsSheet() {
-  const s = PT.state.settings, t = Object.assign({}, s.targets);
-  let kg = s.bodyKg, hard = s.hardKcal;
+  const s = PT.state.settings, t = Object.assign({}, s.targets), m = Object.assign({}, PT.maxGoals());
+  let kg = s.bodyKg;
   const box = h('div', {});
+  const row = (o, label) => h('div', { class: 'grid2', style: { marginBottom: '8px' } },
+    PT.field('Calories', PT.numInput(o.kcal, v => o.kcal = v)), PT.field('Protein g', PT.numInput(o.p, v => o.p = v)),
+    PT.field('Carbs g', PT.numInput(o.c, v => o.c = v)), PT.field('Fat g', PT.numInput(o.f, v => o.f = v)));
   function draw() {
     PT.fill(box,
-      h('p', { class: 'small muted' }, 'You set the numbers. A common starting point in sports nutrition is about 1.6 to 2.2 g of protein per kg of body weight, and roughly 5 to 8 g of carbs per kg on heavy endurance days. A registered dietitian can tailor this to you.'),
+      h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your goals rise with how hard each day is. Rest days use the first set; your hardest day (training level 10) uses the second; every other day sits in between based on that day\'s exercise levels. A common starting point is about 1.6 to 2.2 g of protein per kg of body weight. A registered dietitian can tailor this to you.'),
       h('h3', {}, 'Rest day'),
-      h('div', { class: 'grid2' }, PT.field('Calories', PT.numInput(t.kcal, v => t.kcal = v)), PT.field('Body weight kg', PT.numInput(kg, v => kg = v))), gap(8),
+      PT.field('Body weight kg (for the suggestion)', PT.numInput(kg, v => kg = v)), gap(8),
       h('button', { class: 'btn ghost small', onclick: () => {
-        if (!num(t.kcal) || !num(kg)) { PT.toast('Enter calories and body weight first'); return; }
+        if (!num(t.kcal) || !num(kg)) { PT.toast('Enter rest-day calories and body weight first'); return; }
         t.p = Math.round(1.8 * num(kg)); t.f = Math.round(num(t.kcal) * 0.25 / 9); t.c = Math.max(0, Math.round((num(t.kcal) - t.p * 4 - t.f * 9) / 4)); draw();
       } }, 'Suggest split (1.8 g/kg protein, 25% fat)'), gap(10),
-      h('div', { class: 'grid3' }, PT.field('Protein g', PT.numInput(t.p, v => t.p = v)), PT.field('Carbs g', PT.numInput(t.c, v => t.c = v)), PT.field('Fat g', PT.numInput(t.f, v => t.f = v))), gap(14),
-      h('h3', {}, 'Training days'),
-      h('p', { class: 'small muted' }, 'Calories on your hardest day (load 10/10). Other training days sit in between, based on the levels of the sessions you have planned. The extra calories go to carbs. Leave empty to keep the same target every day.'),
-      PT.field('Hardest day calories', PT.numInput(hard, v => hard = v)), gap(12),
-      h('button', { class: 'btn block', onclick: () => { s.targets = { kcal: t.kcal, p: t.p, c: t.c, f: t.f }; s.bodyKg = kg; s.hardKcal = hard; PT.save(); sh.close(); PT.render(); } }, 'Save targets'));
+      row(t),
+      h('h3', { style: { marginTop: '10px' } }, 'Hardest day (level 10)'),
+      h('button', { class: 'btn ghost small', onclick: () => {
+        if (!num(t.kcal)) { PT.toast('Fill in the rest day first'); return; }
+        // a common pattern: about 25% more energy, mostly from carbs, a little more protein
+        const extra = Math.round(num(t.kcal) * 0.25);
+        m.kcal = num(t.kcal) + extra; m.p = Math.round(num(t.p) * 1.1); m.f = num(t.f); m.c = num(t.c) + Math.max(0, Math.round((extra - (m.p - num(t.p)) * 4) / 4)); draw();
+      } }, 'Suggest (+25% calories, mostly carbs)'), gap(10),
+      row(m),
+      h('p', { class: 'small muted' }, 'Leave the hardest day empty to keep the same goals every day.'),
+      h('button', { class: 'btn block', onclick: () => {
+        s.targets = { kcal: t.kcal, p: t.p, c: t.c, f: t.f }; s.maxTargets = { kcal: m.kcal, p: m.p, c: m.c, f: m.f }; s.hardKcal = ''; s.bodyKg = kg;
+        PT.save(); sh.close(); PT.render();
+      } }, 'Save goals'));
   }
-  const sh = PT.sheet('Daily targets', box);
+  const sh = PT.sheet('Daily macro goals', box);
   draw();
 }
 })();

@@ -83,29 +83,28 @@ PT.moreViews.mind = function () {
 /* ---------- exercise library ---------- */
 function safeUrl(u) { u = (u || '').trim(); return (/^https?:\/\//i.test(u) || /^[\w./-]+$/.test(u)) ? u : ''; }
 // Exercise library: opens on the body-part / sport folders; tap one to see and add its exercises.
-const exCard = e => h('a', { class: 'card tap', href: '#/more/exercises/' + e.id },
+const exCard = e => h('a', { class: 'card tap', href: '#/library/exercises/' + e.id },
   h('div', { class: 'row between' }, h('b', {}, e.name), e.link ? h('span', { class: 'pill done' }, 'media') : null),
   h('div', { class: 'small muted' }, (e.muscles || []).map(PT.tagLabel).join(', ') + (PT.hasRange(e) ? ' · min/max set' : '')));
 const newExercise = tag => {
   const e = { id: PT.uid(), name: '', muscles: tag ? [tag] : [], kind: tag ? PT.defaultKind(tag) : 'strength', unit: tag && PT.defaultKind(tag) === 'cardio' ? 'km' : '', notes: '', link: '' };
-  PT.state.exercises.push(e); PT.save(); location.hash = '#/more/exercises/' + e.id;
+  PT.state.exercises.push(e); PT.save(); location.hash = '#/library/exercises/' + e.id;
 };
 PT.moreViews.exercises = function (parts) {
   if (parts[2] === 'f') return exFolder(parts[3]);
   if (parts[2]) return exDetail(parts[2]);
   const s = PT.state, results = h('div', {});
   const folders = () => [
-    h('a', { class: 'card tap folder', href: '#/sessions' }, h('div', { class: 'row between' }, h('b', {}, '★ Session library'), h('span', { class: 'muted small' }, s.sessions.length + ' ›'))),
     PT.FOLDERS.map(([group, list]) => [h('h2', {}, group), h('div', { class: 'folders' }, list.map(([tag, label]) =>
-      h('a', { class: 'folder-tile', href: '#/more/exercises/f/' + tag }, h('b', {}, label), h('span', { class: 'small muted' }, s.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind))).length + ' exercises'))))]),
-    s.exercises.some(e => !(e.muscles || []).length) ? [h('h2', {}, 'Other'), h('div', { class: 'folders' }, h('a', { class: 'folder-tile', href: '#/more/exercises/f/none' }, h('b', {}, 'No folder'), h('span', { class: 'small muted' }, s.exercises.filter(e => !(e.muscles || []).length).length + ' exercises')))] : null];
+      h('a', { class: 'folder-tile', href: '#/library/exercises/f/' + tag }, h('b', {}, label), h('span', { class: 'small muted' }, s.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind))).length + ' exercises'))))]),
+    s.exercises.some(e => !(e.muscles || []).length) ? [h('h2', {}, 'Other'), h('div', { class: 'folders' }, h('a', { class: 'folder-tile', href: '#/library/exercises/f/none' }, h('b', {}, 'No folder'), h('span', { class: 'small muted' }, s.exercises.filter(e => !(e.muscles || []).length).length + ' exercises')))] : null];
   const draw = q => {
     if (!q) { PT.fill(results, folders()); return; }
     const rows = s.exercises.filter(e => e.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
     PT.fill(results, rows.length ? rows.map(exCard) : h('div', { class: 'empty' }, 'No matches.'));
   };
   draw('');
-  return h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Exercise library'),
+  return h('div', {}, PT.back('#/library', 'Library'), h('h1', {}, 'Exercise library'),
     h('input', { placeholder: 'Search all exercises', oninput: e => draw(e.target.value.trim().toLowerCase()), style: { marginBottom: '4px' } }),
     results);
 };
@@ -114,13 +113,13 @@ function exFolder(tag) {
   const label = none ? 'No folder' : PT.tagLabel(tag);
   const strength = PT.FOLDERS[0][1].some(([t]) => t === tag); // strength folders hold strength moves; swims live in Swim
   const rows = PT.state.exercises.filter(e => none ? !(e.muscles || []).length : (e.muscles || []).includes(tag) && !(strength && ['cardio', 'laps'].includes(e.kind))).sort((a, b) => a.name.localeCompare(b.name));
-  return h('div', {}, PT.back('#/more/exercises', 'Exercise library'), h('h1', {}, label),
+  return h('div', {}, PT.back('#/library/exercises', 'Exercise library'), h('h1', {}, label),
     h('button', { class: 'btn block', style: { marginBottom: '12px' }, onclick: () => newExercise(none ? '' : tag) }, '+ New exercise in ' + label),
     rows.length ? rows.map(exCard) : h('div', { class: 'empty' }, 'Nothing in this folder yet.'));
 }
 function exDetail(id) {
   const s = PT.state, e = s.exercises.find(x => x.id === id);
-  if (!e) return h('div', {}, PT.back('#/more/exercises', 'Exercise library'), h('div', { class: 'empty' }, 'Not found.'));
+  if (!e) return h('div', {}, PT.back('#/library/exercises', 'Exercise library'), h('div', { class: 'empty' }, 'Not found.'));
   const media = h('div', {});
   const drawMedia = () => {
     const u = safeUrl(e.link); media.replaceChildren();
@@ -130,7 +129,7 @@ function exDetail(id) {
     else media.append(h('a', { class: 'btn ghost block', style: { marginTop: '10px' }, href: u, target: '_blank', rel: 'noopener' }, 'Open demo ↗'));
   };
   drawMedia();
-  return h('div', {}, PT.back('#/more/exercises', 'Exercise library'), h('h1', {}, e.name || 'New exercise'),
+  return h('div', {}, PT.back('#/library/exercises', 'Exercise library'), h('h1', {}, e.name || 'New exercise'),
     PT.field('Name', h('input', { value: e.name, oninput: ev => e.name = ev.target.value, onchange: () => PT.save() })), gap(10),
     h('label', { class: 'f' }, 'Folders (muscles / sport)'), PT.chips(PT.TAGS, e.muscles, () => PT.save()), gap(10),
     h('h2', {}, 'Your range'),
@@ -142,6 +141,6 @@ function exDetail(id) {
     PT.field('Demo video or image link', h('input', { value: e.link || '', placeholder: 'https://… or media/squat.mp4', oninput: ev => e.link = ev.target.value, onchange: () => { PT.save(); drawMedia(); } })),
     h('p', { class: 'small muted' }, 'Paste a link, or add your own video file to the docs/media folder on GitHub and use media/yourfile.mp4.'),
     media, gap(18),
-    h('button', { class: 'btn danger block', onclick: () => PT.confirm('Delete "' + (e.name || 'this exercise') + '"?', 'Delete', () => { s.exercises = s.exercises.filter(x => x.id !== e.id); PT.save(); location.hash = '#/more/exercises'; }) }, 'Delete exercise'));
+    h('button', { class: 'btn danger block', onclick: () => PT.confirm('Delete "' + (e.name || 'this exercise') + '"?', 'Delete', () => { s.exercises = s.exercises.filter(x => x.id !== e.id); PT.save(); location.hash = '#/library/exercises'; }) }, 'Delete exercise'));
 }
 })();

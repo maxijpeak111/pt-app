@@ -7,8 +7,85 @@ PT.moreViews = {};
 PT.views.more = function (parts) {
   const v = parts[1] && PT.moreViews[parts[1]];
   if (v) return v(parts);
-  const items = [['#/more/progress', 'Progress & goals'], ['#/sessions', 'Session library'], ['#/more/exercises', 'Exercise library'], ['#/more/sleep', 'Sleep'], ['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)'], ['#/more/settings', 'Settings & backup']];
+  const items = [['#/more/progress', 'Goals & history'], ['#/more/sleep', 'Sleep'], ['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)'], ['#/more/settings', 'Settings & backup']];
   return h('div', {}, h('h1', {}, 'More'), h('div', { class: 'menu' }, items.map(([href, l]) => h('a', { href }, l, h('span', {}, '›')))));
+};
+
+/* ---------- Progress tab: one week at a time ---------- */
+let pWeek = null; // Monday of the week being viewed
+const inRange = (d, a, b) => d >= a && d < b;
+// Distances from a list of logs. Runs in km; swims in metres (laps × pool length).
+const runKm = logs => logs.reduce((a, l) => a + (l.exercises || []).reduce((b, e) => b + (e.kind === 'cardio' && (e.sport === 'run' || (!e.sport && l.type === 'run')) ? (e.unit === 'm' ? +e.distance / 1000 : +e.distance) || 0 : 0), 0), 0);
+const swimM = logs => logs.reduce((a, l) => a + (l.exercises || []).reduce((b, e) => b + (e.kind === 'laps' ? (+e.sets || 1) * (+e.laps || 0) * PT.pool() : e.kind === 'cardio' && e.sport === 'swim' ? (e.unit === 'km' ? +e.distance * 1000 : +e.distance) || 0 : 0), 0), 0);
+const heaviest = (logs, name) => Math.max(0, ...logs.flatMap(l => (l.exercises || []).filter(e => e.name === name && e.kind === 'strength').map(e => +e.kg || 0)));
+const longestRun = logs => Math.max(0, ...logs.flatMap(l => (l.exercises || []).filter(e => e.kind === 'cardio' && e.sport === 'run').map(e => (e.unit === 'm' ? +e.distance / 1000 : +e.distance) || 0)));
+const mostSwim = logs => Math.max(0, ...logs.map(l => swimM([l])));
+PT.weekStats = ws => {
+  const we = PT.addDays(ws, 7), s = PT.state;
+  const logs = s.logs.filter(l => inRange(l.date, ws, we)), before = s.logs.filter(l => l.date < ws);
+  const days = [0, 1, 2, 3, 4, 5, 6].map(i => PT.addDays(ws, i));
+  // recovery: ticked vs shown before/after moves on days you had exercises
+  let planned = 0, done = 0; const mins = { sauna: 0, bike: 0, walk: 0 };
+  days.forEach(d => {
+    const r = s.recoveryLog[d] || {}; Object.keys(mins).forEach(k => mins[k] += +r[k] || 0);
+    if (!PT.dayExs(d).length) return;
+    const tags = PT.dayTags(d);
+    PT.PHASES.forEach(([ph]) => { const { list, SHOW } = PT.stretchList(d, tags, ph); const shown = list.slice(0, SHOW); planned += shown.length; done += shown.filter(x => (r.done || {})[x.id]).length; });
+  });
+  const met = days.map(d => PT.macrosMet(d));
+  return { logs, before, days, sessions: logs.length, runKm: PT.r1(runKm(logs)), swimM: Math.round(swimM(logs)), planned, done,
+    recPct: planned ? Math.round(done / planned * 100) : null, mins, met, metDays: met.filter(x => x === true).length, fuelDays: met.filter(x => x !== null).length };
+};
+// The standout of the week: a new best beats everything, then volume.
+function bestStat(w) {
+  const wins = [];
+  const lifts = [...new Set(w.logs.flatMap(l => (l.exercises || []).filter(e => e.kind === 'strength' && +e.kg).map(e => e.name)))];
+  lifts.forEach(n => { const now = heaviest(w.logs, n), prev = heaviest(w.before, n); if (prev && now > prev) wins.push([100 + (now - prev) / prev * 100, 'New best: ' + n + ' ' + now + ' kg', '+' + PT.r1(now - prev) + ' kg on your previous best']); });
+  const lr = longestRun(w.logs), plr = longestRun(w.before); if (plr && lr > plr) wins.push([90, 'Longest run yet: ' + lr + ' km', 'previous longest ' + plr + ' km']);
+  const ms = mostSwim(w.logs), pms = mostSwim(w.before); if (pms && ms > pms) wins.push([85, 'Biggest swim yet: ' + ms + ' m', 'previous best ' + pms + ' m']);
+  if (w.fuelDays && w.metDays >= 5) wins.push([70, 'Macros on point ' + w.metDays + ' of 7 days', 'eating habits locked in']);
+  if (w.recPct != null && w.recPct >= 80) wins.push([60, 'Recovery ' + w.recPct + '% done', w.done + ' of ' + w.planned + ' warm-ups and stretches']);
+  if (w.sessions) wins.push([50, w.sessions + (w.sessions === 1 ? ' session' : ' sessions') + ' logged', w.runKm ? w.runKm + ' km run' : w.swimM ? w.swimM + ' m swum' : 'keep it rolling']);
+  wins.sort((a, b) => b[0] - a[0]);
+  return wins[0] || null;
+}
+PT.views.progress = function (parts) {
+  if (!pWeek) pWeek = PT.weekStart(PT.today());
+  const w = PT.weekStats(pWeek), last = PT.weekStats(PT.addDays(pWeek, -7));
+  const best = bestStat(w);
+  const tile = (value, label, note) => h('div', { class: 'card', style: { margin: 0 } }, h('div', { class: 'stat' }, value), h('div', { class: 'small' }, h('b', {}, label)), note ? h('div', { class: 'small muted' }, note) : null);
+  const lifts = [...new Set(w.logs.flatMap(l => (l.exercises || []).filter(e => e.kind === 'strength' && +e.kg).map(e => e.name)))].sort();
+  return h('div', {},
+    h('h1', {}, 'Progress'),
+    h('div', { class: 'week-nav' },
+      h('button', { class: 'btn ghost small', onclick: () => { pWeek = PT.addDays(pWeek, -7); PT.render(); } }, '‹'),
+      h('div', { class: 'week-title' }, PT.niceDate(pWeek) + ' – ' + PT.niceDate(PT.addDays(pWeek, 6)),
+        h('div', { class: 'small muted' }, pWeek === PT.weekStart(PT.today()) ? 'This week' : pWeek > PT.today() ? 'Coming up' : 'Past week')),
+      h('button', { class: 'btn ghost small', onclick: () => { pWeek = PT.addDays(pWeek, 7); PT.render(); } }, '›')),
+    h('div', { class: 'card reminder' }, h('div', { class: 'small red', style: { fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em' } }, 'Best of the week'),
+      best ? [h('div', { class: 'stat', style: { fontSize: '22px', marginTop: '4px' } }, best[1]), h('div', { class: 'small muted' }, best[2])] : h('div', { class: 'small muted', style: { marginTop: '4px' } }, 'Nothing logged this week yet.')),
+    h('div', { class: 'grid2', style: { marginTop: '10px' } },
+      tile(w.sessions, 'Sessions', 'last week ' + last.sessions),
+      tile(w.runKm + ' km', 'Run distance', 'last week ' + last.runKm + ' km'),
+      tile(w.swimM + ' m', 'Swim distance', w.swimM ? Math.round(w.swimM / PT.pool()) + ' laps · last week ' + last.swimM + ' m' : 'last week ' + last.swimM + ' m'),
+      tile(w.recPct == null ? '–' : w.recPct + '%', 'Recovery done', w.planned ? w.done + ' of ' + w.planned + ' warm-ups & stretches' : 'no training days yet')),
+    h('div', { class: 'small muted', style: { margin: '8px 2px 0' } }, 'Sauna ' + w.mins.sauna + ' min · bike ' + w.mins.bike + ' min · walk ' + w.mins.walk + ' min'),
+    h('h2', {}, 'Right macros'),
+    h('div', { class: 'card' },
+      h('div', { class: 'row between small' }, h('b', {}, w.metDays + ' of 7 days on target'), h('span', { class: 'muted' }, w.fuelDays + ' days logged')),
+      h('div', { class: 'dots' }, w.met.map((m, i) => h('i', { class: m === true ? 'met' : m === false ? 'miss' : '', title: w.days[i] }))),
+      h('div', { class: 'chart-labels' }, w.days.map(d => h('span', {}, PT.dayName(d).slice(0, 2)))),
+      h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Green = all macros within 10% of that day\'s goal · red outline = logged but off · grey = not logged')),
+    h('h2', {}, 'Strength bests'),
+    lifts.length ? h('div', { class: 'card' }, lifts.map(n => {
+      const now = heaviest(w.logs, n), prev = heaviest(last.logs, n), ever = heaviest(w.before, n);
+      const series = PT.state.logs.filter(l => l.date < PT.addDays(pWeek, 7)).sort((a, b) => a.date < b.date ? -1 : 1).map(l => heaviest([l], n)).filter(Boolean).slice(-10).map(y => ({ y }));
+      return h('div', { style: { padding: '8px 0', borderBottom: '1px solid var(--line)' } },
+        h('div', { class: 'row between' }, h('b', {}, n), h('span', {}, h('b', {}, now + ' kg'),
+          prev ? h('span', { class: now > prev ? 'ok' : now < prev ? 'red' : 'muted', style: { fontWeight: 800 } }, '  ' + (now > prev ? '▲ +' + PT.r1(now - prev) : now < prev ? '▼ ' + PT.r1(now - prev) : '= ') + ' kg') : null)),
+        h('div', { class: 'small muted' }, ever && now > ever ? 'New personal best' : ever ? 'Best before this week: ' + ever + ' kg' : 'First time logged'),
+        series.length > 1 ? PT.spark(series) : null);
+    })) : h('div', { class: 'empty' }, 'Log weights this week to see your strength bests.'));
 };
 
 /* ---------- progress & goals ---------- */

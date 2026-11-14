@@ -7,7 +7,7 @@ PT.views.sessions = function (parts) {
   if (parts[1]) return editor(parts[1]);
   const list = PT.state.sessions;
   return h('div', {},
-    PT.back('#/more', 'More'),
+    PT.back('#/library', 'Library'),
     h('h1', {}, 'Session library'),
     h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Build routines you repeat. On any day, tap Add exercises and open ★ Session library to drop a whole session in, or pick single exercises from the folders.'),
     h('a', { class: 'btn block', href: '#/sessions/new', style: { marginBottom: '14px' } }, '+ New session'),
@@ -81,6 +81,7 @@ PT.browseSheet = function (onAdd, opts) {
       const mine = PT.state.sessions.filter(s => s.id !== opts.skipId);
       return [
         !opts.noSessions ? h('div', { class: 'card tap folder', onclick: sessionsFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Session library'), h('span', { class: 'muted small' }, mine.length + ' ›'))) : null,
+        opts.onStretch ? h('div', { class: 'card tap folder', onclick: routinesFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Recovery routines'), h('span', { class: 'muted small' }, PT.state.routines.length + ' ›'))) : null,
         PT.FOLDERS.map(([group, list]) => [h('h2', {}, group), h('div', { class: 'folders' }, list.map(([tag, label]) => {
           const n = PT.state.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind))).length;
           return h('div', { class: 'folder-tile', onclick: () => folder(tag, group + ' › ' + label) }, h('b', {}, label), h('span', { class: 'small muted' }, n + ' exercises'));
@@ -151,10 +152,21 @@ PT.browseSheet = function (onAdd, opts) {
     added++; PT.toast('Added ' + lib.name); back();
   }
 
+  // Saved recovery routines: one tap drops all their moves into the day's Before or After box.
+  function routinesFolder() {
+    const list = PT.state.routines.filter(r => r.items.length);
+    PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, 'Recovery routines'), addedLine(),
+      h('p', { class: 'small muted' }, list.length ? 'Tap one to add all its moves to today.' : 'No routines yet. Build them in Library → Recovery library.'),
+      list.map(r => h('div', { class: 'card tap', onclick: () => {
+        r.items.forEach(id => opts.onStretch(id, r.phase)); added += r.items.length; PT.toast('Added ' + (r.name || 'routine') + ' to ' + (r.phase === 'before' ? 'Before' : 'After')); routinesFolder();
+      } }, h('div', { class: 'row between' }, h('b', {}, r.name || 'Untitled routine'), h('span', { class: 'pill' }, r.phase === 'before' ? 'Before' : 'After')),
+        h('div', { class: 'small muted' }, r.items.map(id => (PT.stretchById(id) || {}).name).filter(Boolean).join(' · ')))), done);
+  }
+
   function sessionsFolder() {
     const mine = PT.state.sessions.filter(s => s.id !== opts.skipId);
     PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, 'Session library'), addedLine(),
-      h('p', { class: 'small muted' }, mine.length ? 'Tap one to stack all of its exercises in, at the levels you saved.' : 'No saved sessions yet. Build them in More → Session library.'),
+      h('p', { class: 'small muted' }, mine.length ? 'Tap one to stack all of its exercises in, at the levels you saved.' : 'No saved sessions yet. Build them in Library → Session library.'),
       mine.map(s => h('div', { class: 'card tap', onclick: () => {
         onAdd(s.exercises.map(e => Object.assign(JSON.parse(JSON.stringify(e)), { id: PT.uid() })), s, s.name);
         added += s.exercises.length; PT.toast('Added ' + s.name); sessionsFolder();
