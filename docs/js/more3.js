@@ -56,6 +56,8 @@ PT.moreViews.settings = function () {
     h('div', { class: 'card' },
       h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your session as written is the base (100%). Intensity 1 uses your minimum, 10 uses your maximum, and the steps between are even. This scales weights, distances and times.'),
       h('div', { class: 'grid2' }, PT.field('Intensity 1 = % of base', PT.numInput(s.minPct, v => { s.minPct = v; PT.save(); upd(); }, '60', '1')), PT.field('Intensity 10 = % of base', PT.numInput(s.maxPct, v => { s.maxPct = v; PT.save(); upd(); }, '110', '1'))), gap(8), prev),
+    h('h2', {}, 'Swimming'),
+    h('div', { class: 'card' }, PT.field('Pool length (m) · swims are logged in laps of this', PT.numInput(s.poolM, v => { s.poolM = v; PT.save(); }, '18', '1'))),
     h('h2', {}, 'Body weight'),
     h('div', { class: 'card' }, PT.field('kg (used by the nutrition suggester)', PT.numInput(s.bodyKg, v => { s.bodyKg = v; PT.save(); }, '', '0.1'))),
     h('h2', {}, 'Import calendar'),

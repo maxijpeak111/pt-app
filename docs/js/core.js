@@ -21,7 +21,7 @@ const KEY = 'pt.v1';
 function defaults() {
   return {
     v: 1, seeded: false,
-    settings: { minPct: 60, maxPct: 110, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
+    settings: { minPct: 60, maxPct: 110, poolM: 18, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], recoveryLog: {},
     foods: [], meals: [], foodLog: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -103,10 +103,18 @@ PT.digitsToSec = d => {
   d = String(d).replace(/\D/g, '').slice(0, 6); if (!d) return 0;
   return (+(d.slice(0, -4) || 0)) * 3600 + (+(d.slice(-4, -2) || 0)) * 60 + (+d.slice(-2));
 };
-// type digits only: 530 becomes 5:30 (the iPhone number pad has no colon)
+// Show typed digits with colons put in: 630 → 6:30, 10500 → 1:05:00. No padding while typing.
+PT.fmtDigits = d => d.length <= 2 ? d : d.length <= 4 ? d.slice(0, -2) + ':' + d.slice(-2) : d.slice(0, -4) + ':' + d.slice(-4, -2) + ':' + d.slice(-2);
+// type digits only: 630 becomes 6:30 (the iPhone number pad has no colon).
+// While typing we only add colons; the tidy m:ss form is shown when you leave the box.
+// (Re-formatting on every key used to turn "6" into "0:06", so 6-3-0 became 10:30.)
 PT.durInput = (sec, onChange, ph) => {
   const inp = h('input', { type: 'text', inputmode: 'numeric', placeholder: ph || 'm:ss', value: PT.fmtDur(sec) });
-  inp.addEventListener('input', () => { const s = PT.digitsToSec(inp.value); inp.value = PT.fmtDur(s); onChange(s); });
+  inp.addEventListener('input', () => {
+    const d = inp.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 6);
+    inp.value = PT.fmtDigits(d); onChange(PT.digitsToSec(d));
+  });
+  inp.addEventListener('blur', () => { inp.value = PT.fmtDur(PT.digitsToSec(inp.value)); });
   return inp;
 };
 PT.numInput = (val, onChange, ph, step) => {
@@ -170,14 +178,20 @@ PT.FOLDERS = [
   ['Cardio', [['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike']]],
   ['Combat', [['mma', 'MMA']]]
 ];
-PT.KINDS = [['strength', 'Sets × reps × kg'], ['cardio', 'Distance + time'], ['time', 'Time / rounds']];
+PT.KINDS = [['strength', 'Sets × reps × kg'], ['cardio', 'Distance + time'], ['laps', 'Sets × laps'], ['time', 'Time / rounds']];
+// Pool length in metres (a setting, 18 m to start with). Swims are logged in laps of this length.
+PT.pool = () => +PT.state.settings.poolM || 18;
 PT.tagLabel = t => (PT.TAGS.find(x => x[0] === t) || [0, t])[1];
 PT.defaultTags = { strength: [], run: ['run', 'legs'], swim: ['swim', 'shoulders', 'back'], bike: ['bike', 'legs'], mma: ['mma', 'full'], other: [] };
-PT.defaultKind = t => (t === 'run' || t === 'swim') ? 'cardio' : 'strength';
+PT.defaultKind = t => t === 'swim' ? 'laps' : (t === 'run' || t === 'bike') ? 'cardio' : t === 'mma' ? 'time' : 'strength';
 PT.defaultUnit = t => t === 'swim' ? 'm' : 'km';
 PT.newEx = type => ({ id: PT.uid(), name: '', kind: PT.defaultKind(type), sets: 3, reps: 10, kg: '', distance: '', unit: PT.defaultUnit(type), pace: 0, time: 0, notes: '' });
 PT.exText = ex => {
   if (ex.kind === 'time') return [+ex.rounds ? ex.rounds + ' rounds' : null, +ex.time ? PT.fmtDur(ex.time) + (+ex.rounds ? ' each' : '') : null].filter(Boolean).join(' × ') || '—';
+  if (ex.kind === 'laps') {
+    const st = +ex.sets || 1, l = +ex.laps;
+    return [l ? st + ' × ' + l + ' laps (' + st * l * PT.pool() + ' m)' : null, +ex.time ? PT.fmtDur(ex.time) : null].filter(Boolean).join(' · ') || '—';
+  }
   if (ex.kind === 'cardio') {
     const p = [];
     if (+ex.distance) p.push(ex.distance + ' ' + ex.unit);
@@ -199,6 +213,8 @@ PT.scaleEx = (ex, i) => {
     if (+ex.distance) o.distance = ex.unit === 'm' ? Math.round(ex.distance * f / 25) * 25 : Math.round(ex.distance * f * 10) / 10;
     if (+ex.time) o.time = Math.round(ex.time * f / 10) * 10;
     else if (+o.distance && +ex.pace) o.time = Math.round((ex.unit === 'm' ? o.distance / 100 : o.distance) * ex.pace);
+  } else if (ex.kind === 'laps') {
+    if (+ex.laps) o.laps = Math.max(1, Math.round(ex.laps * f));
   } else if (+ex.kg) o.kg = Math.round(ex.kg * f / 2.5) * 2.5;
   return o;
 };
@@ -213,7 +229,7 @@ PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || [])
 // What to do at a given level, worked out from your range. Returns the same shape the logger uses.
 PT.atLevel = (lib, level) => {
   const t = (Math.min(10, Math.max(1, +level || 1)) - 1) / 9, mn = lib.range.min, mx = lib.range.max;
-  const o = { id: PT.uid(), exId: lib.id, name: lib.name, kind: lib.kind || 'strength', sport: PT.sportOf(lib), sets: '', reps: '', kg: '', distance: '', unit: lib.unit || 'km', pace: 0, time: 0, rounds: '', notes: '' };
+  const o = { id: PT.uid(), exId: lib.id, name: lib.name, kind: lib.kind || 'strength', sport: PT.sportOf(lib), sets: '', reps: '', kg: '', distance: '', unit: lib.unit || 'km', pace: 0, time: 0, rounds: '', laps: '', notes: '' };
   if (o.kind === 'strength') {
     o.sets = Math.round(lerp(mn.sets, mx.sets, t)); o.reps = Math.round(lerp(mn.reps, mx.reps, t));
     const kg = lerp(mn.kg, mx.kg, t); o.kg = kg ? Math.round(kg / 2.5) * 2.5 : '';
@@ -222,6 +238,9 @@ PT.atLevel = (lib, level) => {
     o.distance = d ? (o.unit === 'm' ? Math.round(d / 25) * 25 : Math.round(d * 10) / 10) : '';
     const tm = lerp(mn.time, mx.time, t); o.time = tm ? Math.round(tm / 5) * 5 : 0;
     if (+o.distance && o.time) o.pace = Math.round(o.time / (o.unit === 'm' ? o.distance / 100 : o.distance));
+  } else if (o.kind === 'laps') {
+    o.sets = Math.round(lerp(mn.sets, mx.sets, t)) || 1; o.laps = Math.round(lerp(mn.laps, mx.laps, t)) || '';
+    const tm = lerp(mn.time, mx.time, t); o.time = tm ? Math.round(tm / 5) * 5 : 0;
   } else {
     o.rounds = Math.round(lerp(mn.rounds, mx.rounds, t)) || '';
     const tm = lerp(mn.time, mx.time, t); o.time = tm ? Math.round(tm / 5) * 5 : 0;
@@ -241,6 +260,66 @@ PT.itemLevel = (item, s) => {
   return Math.round(s.exercises.reduce((a, e) => a + PT.levelOf(item, e), 0) / s.exercises.length);
 };
 
+/* ---------- a day's exercises: what you planned and what you actually did ---------- */
+// plan[date].exs = [{ id, exId, name, kind, unit, sport, level, base?, actual, fromSession? }]
+// `actual` is what you really did (the important part). The target is only a guide, worked out from the level.
+PT.FIELDS = { strength: ['sets', 'reps', 'kg'], cardio: ['distance', 'time'], laps: ['sets', 'laps', 'time'], time: ['rounds', 'time'] };
+const pickFields = (x, kind) => (PT.FIELDS[kind] || []).reduce((a, k) => { if (x[k] !== '' && x[k] != null) a[k] = x[k]; return a; }, {});
+PT.dayExs = date => ((PT.state.plan[date] || {}).exs) || [];
+PT.hasActual = en => !!en.actual && (PT.FIELDS[en.kind] || []).some(k => +en.actual[k]);
+// Target for an entry at its level, or null when there is no min/max range and nothing written to scale from.
+PT.entryTarget = en => {
+  const lib = PT.libEx(en);
+  if (PT.hasRange(lib) && (lib.kind || 'strength') === en.kind) return PT.atLevel(lib, en.level || 7);
+  if (en.base) return PT.scaleEx(Object.assign({}, en.base, { kind: en.kind, unit: en.unit }), en.level || 7);
+  return null;
+};
+// The level you used for this exercise most recently (so adding it again starts where you left off).
+PT.lastLevel = x => {
+  const key = x.exId || x.id, nm = String(x.name || '').toLowerCase();
+  const dates = Object.keys(PT.state.plan).sort().reverse();
+  for (const d of dates) {
+    const en = PT.dayExs(d).find(e => (key && e.exId === key) || e.name.toLowerCase() === nm);
+    if (en && en.level) return en.level;
+  }
+  return 0;
+};
+// Turn a library exercise or a saved-session exercise into a day entry.
+PT.makeEntry = (x, extra) => {
+  const lib = PT.libEx(x) || (x.muscles ? x : null);
+  const kind = (lib && lib.kind) || x.kind || 'strength';
+  const en = { id: PT.uid(), exId: lib ? lib.id : (x.exId || ''), name: lib ? lib.name : x.name, kind,
+    unit: kind === 'cardio' ? ((lib && lib.unit) || x.unit || 'km') : '', sport: PT.sportOf(lib),
+    level: x.level || PT.lastLevel(lib || x) || 7, actual: null };
+  const base = pickFields(x, kind);
+  if (!PT.hasRange(lib) && Object.values(base).some(v => +v)) en.base = base;
+  return Object.assign(en, extra || {});
+};
+// The most recent earlier time you logged this exercise: { date, ex } or null.
+PT.lastDone = (en, beforeDate) => {
+  const nm = en.name.toLowerCase();
+  const logs = PT.state.logs.filter(l => l.date < beforeDate).sort((a, b) => a.date < b.date ? 1 : -1);
+  for (const l of logs) {
+    const ex = (l.exercises || []).find(e => (en.exId && e.exId === en.exId) || String(e.name || '').toLowerCase() === nm);
+    if (ex) return { date: l.date, ex };
+  }
+  return null;
+};
+PT.dayLevel = date => { const xs = PT.dayExs(date); return xs.length ? Math.round(xs.reduce((a, e) => a + (+e.level || 7), 0) / xs.length) : 0; };
+// Keep one log per training day, built from what you actually did. Progress charts read these logs.
+PT.syncDayLog = date => {
+  const day = PT.state.plan[date] || {}, id = 'day-' + date;
+  const done = (day.exs || []).filter(PT.hasActual);
+  PT.state.logs = PT.state.logs.filter(l => l.id !== id);
+  if (!done.length) return;
+  PT.state.logs.push({ id, date, name: 'Training', type: 'day', intensity: PT.dayLevel(date), rpe: day.rpe || '', notes: '',
+    exercises: done.map(en => {
+      const o = Object.assign({ exId: en.exId, name: en.name, kind: en.kind, unit: en.unit, sport: en.sport }, en.actual);
+      if (en.kind === 'cardio' && +o.distance && +o.time) o.pace = Math.round(o.time / (o.unit === 'm' ? o.distance / 100 : o.distance));
+      return o;
+    }) });
+};
+
 /* ---------- nutrition maths ---------- */
 // Food macros are stored for one usual portion; qty is how many portions (0.5, 1, 2…).
 PT.macrosOf = (food, qty) => ({ kcal: food.kcal * qty, p: food.p * qty, c: food.c * qty, f: food.f * qty });
@@ -249,6 +328,7 @@ PT.mealTotals = meal => PT.sumMacros(meal.items.map(it => { const f = PT.state.f
 PT.r1 = n => Math.round(n * 10) / 10;
 
 /* ---------- built-in stretch library (general guidance; skip anything that hurts) ---------- */
+// After = cool-down holds. Before = PT.PREP below (moving warm-ups).
 PT.STRETCHES = [
   { id: 's-doorway-chest', name: 'Doorway chest stretch', tags: ['chest', 'swim', 'mma'], hold: '30s each side', how: 'Forearm on a door frame, elbow at shoulder height. Step through until the front of the chest opens.' },
   { id: 's-cross-body', name: 'Cross-body shoulder stretch', tags: ['shoulders', 'chest', 'swim'], hold: '30s each side', how: 'Pull one arm across the chest with the other hand. Keep the shoulder down.' },
@@ -271,6 +351,24 @@ PT.STRETCHES = [
   { id: 's-forwardfold', name: 'Standing forward fold', tags: ['full', 'legs', 'back'], hold: '30s', how: 'Soft knees, hang from the hips and let head and arms drop. Roll up slowly.' },
   { id: 's-breath', name: 'Box breathing', tags: ['full'], hold: '1 min', how: 'In for 4, hold 4, out 4, hold 4. Finish the session settled.' }
 ];
+PT.STRETCHES.forEach(x => x.phase = 'after');
+// Prep before training: moving warm-ups, not long holds.
+PT.PREP = [
+  { id: 'p-leg-swing', name: 'Leg swings', tags: ['legs', 'run', 'mma'], hold: '10 each way, each leg', how: 'Hold a wall. Swing front to back, then side to side, letting the range grow.' },
+  { id: 'p-knee-hug', name: 'Walking knee hugs', tags: ['legs', 'run'], hold: '10 each side', how: 'Step, pull one knee to the chest, rise onto the standing toes.' },
+  { id: 'p-ankle', name: 'Ankle rocks', tags: ['legs', 'run'], hold: '10 each side', how: 'Foot near a wall, drive the knee forward over the toes and back, heel down.' },
+  { id: 'p-wgs', name: 'Lunge with rotation', tags: ['legs', 'run', 'mma', 'full', 'core'], hold: '5 each side', how: 'Long lunge, hand inside the front foot, rotate the other arm to the sky.' },
+  { id: 'p-squat', name: 'Bodyweight squats', tags: ['legs', 'full'], hold: '10 slow', how: 'Sit down between the heels, chest up, stand tall. Grows the depth each rep.' },
+  { id: 'p-glute-bridge', name: 'Glute bridges', tags: ['legs', 'core', 'run'], hold: '10', how: 'On your back, drive through the heels, squeeze at the top for a second.' },
+  { id: 'p-arm-circle', name: 'Arm circles', tags: ['shoulders', 'chest', 'swim', 'mma', 'arms'], hold: '10 each way', how: 'Small circles growing to big ones, forwards then backwards.' },
+  { id: 'p-pull-apart', name: 'Band pull-aparts', tags: ['back', 'shoulders', 'chest', 'swim'], hold: '15', how: 'Arms straight, pull the band to the chest by squeezing the shoulder blades.' },
+  { id: 'p-dislocate', name: 'Band or towel pass-throughs', tags: ['shoulders', 'swim', 'chest'], hold: '10', how: 'Wide grip, straight arms, take it over the head and behind, then back.' },
+  { id: 'p-open-book', name: 'Open book rotations', tags: ['back', 'swim', 'mma', 'core'], hold: '8 each side', how: 'Lie on your side, knees bent, open the top arm across to the other side.' },
+  { id: 'p-pushup-plus', name: 'Scap push-ups', tags: ['chest', 'shoulders', 'arms'], hold: '10', how: 'Plank position, arms straight, let the chest sink then push the floor away.' },
+  { id: 'p-inchworm', name: 'Inchworms', tags: ['full', 'legs', 'core', 'chest'], hold: '5', how: 'Fold down, walk the hands out to a plank, walk the feet back in.' },
+  { id: 'p-skip', name: 'Easy skip or jog', tags: ['full', 'mma', 'run'], hold: '2 min', how: 'Light and easy to raise the heart rate before anything hard.' }
+];
+PT.PREP.forEach(x => x.phase = 'before');
 
 /* ---------- starter exercise library (short reminders, not coaching programmes) ---------- */
 PT.SEED_EXERCISES = [
@@ -330,6 +428,51 @@ PT.migrate = function () {
   st.v = 2; PT.save();
 };
 PT.migrate();
+
+/* v3: swims in laps, planned sessions become a plain list of exercises per day, one log per day. Nothing is lost. */
+PT.migrate3 = function () {
+  const st = PT.state; if ((st.v || 1) >= 3) return;
+  const pool = PT.pool();
+  const toLaps = (dist, unit) => { const m = unit === 'km' ? +dist * 1000 : +dist; return m ? Math.max(1, Math.round(m / pool)) : ''; };
+  st.exercises.forEach(e => {
+    if (!(e.muscles || []).includes('swim') || (e.kind && e.kind !== 'cardio')) return;
+    const unit = e.unit || 'm';
+    if (e.range) ['min', 'max'].forEach(w => { const r = e.range[w] || {}; e.range[w] = { sets: 1, laps: toLaps(r.distance, unit), time: r.time || '' }; });
+    e.kind = 'laps'; e.unit = '';
+  });
+  st.sessions.forEach(s => s.exercises.forEach(e => {
+    const lib = PT.libEx(e);
+    if (lib && lib.kind === 'laps' && e.kind !== 'laps') { if (+e.distance) { e.sets = 1; e.laps = toLaps(e.distance, e.unit); } e.kind = 'laps'; }
+  }));
+  Object.keys(st.plan).forEach(date => {
+    const day = st.plan[date]; day.exs = day.exs || [];
+    let changed = false;
+    (day.items || []).forEach(it => {
+      const s = st.sessions.find(x => x.id === it.sessionId);
+      if (!s) return; // a deleted session: its old log (if any) stays as it is
+      const log = it.logId && st.logs.find(l => l.id === it.logId);
+      s.exercises.forEach((e, i) => {
+        const en = PT.makeEntry(e, { level: PT.levelOf(it, e), fromSession: s.id });
+        const le = log && ((log.exercises || []).find(x => x.id === e.id) || (log.exercises || [])[i]);
+        if (le) {
+          en.actual = pickFields(le, en.kind);
+          if (en.kind === 'laps' && !+le.laps && +le.distance) en.actual = { sets: 1, laps: toLaps(le.distance, le.unit), time: le.time || '' };
+        }
+        day.exs.push(en);
+      });
+      if (log) {
+        if (log.rpe && !day.rpe) day.rpe = log.rpe;
+        if (log.notes) day.note = day.note ? day.note + '\n' + log.notes : log.notes;
+        st.logs = st.logs.filter(l => l !== log);
+      }
+      changed = true;
+    });
+    day.items = [];
+    if (changed) PT.syncDayLog(date);
+  });
+  st.v = 3; PT.save();
+};
+PT.migrate3();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {

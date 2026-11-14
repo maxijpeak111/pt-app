@@ -102,10 +102,9 @@ function apply(days) {
     d.sessions.forEach(se => {
       const s = findSession(se.name);
       if (!s) { r.unknown.add(se.name); return; }
-      if (day.items.some(it => it.sessionId === s.id)) return; // already planned that day
-      const item = { id: PT.uid(), sessionId: s.id, intensity: se.intensity || PT.itemLevel(null, s), logId: null };
-      if (se.intensity) { item.levels = {}; s.exercises.forEach(e => item.levels[e.id] = se.intensity); }
-      day.items.push(item); r.sessions++;
+      if (day.exs.some(en => en.fromSession === s.id)) return; // already planned that day
+      s.exercises.forEach(e => day.exs.push(PT.makeEntry(e, Object.assign({ fromSession: s.id }, se.intensity ? { level: se.intensity } : {}))));
+      r.sessions++;
     });
     if (d.note && !(day.note || '').includes(d.note)) day.note = day.note ? day.note + '\n' + d.note : d.note;
   });

@@ -115,7 +115,7 @@ function exDetail(id) {
     h('h2', {}, 'Your range'),
     h('div', { class: 'card' },
       PT.hasRange(e) ? [h('div', {}, h('span', { class: 'muted small' }, 'Level 1  '), PT.exText(PT.atLevel(e, 1))), h('div', {}, h('span', { class: 'muted small' }, 'Level 5  '), PT.exText(PT.atLevel(e, 5))), h('div', {}, h('span', { class: 'red small' }, 'Level 10  '), PT.exText(PT.atLevel(e, 10)))]
-        : h('div', { class: 'small muted' }, 'Not set yet. You will be asked the first time you add it to a session.'),
+        : h('div', { class: 'small muted' }, 'Not set. Optional: it gives you a suggested target. What you actually lift or swim is what gets tracked.'),
       gap(8), h('button', { class: 'btn ghost small block', onclick: () => { const box = h('div', {}); const sh = PT.sheet('Your range: ' + (e.name || 'exercise'), box); PT.rangeForm(box, e, () => { sh.close(); PT.render(); }); } }, PT.hasRange(e) ? 'Change my range' : 'Set my range')), gap(10),
     PT.field('Technique notes', h('textarea', { value: e.notes || '', oninput: ev => e.notes = ev.target.value, onchange: () => PT.save() })), gap(10),
     PT.field('Demo video or image link', h('input', { value: e.link || '', placeholder: 'https://… or media/squat.mp4', oninput: ev => e.link = ev.target.value, onchange: () => { PT.save(); drawMedia(); } })),

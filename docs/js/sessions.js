@@ -8,6 +8,7 @@ PT.views.sessions = function (parts) {
   const list = PT.state.sessions;
   return h('div', {},
     h('h1', {}, 'Sessions'),
+    h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Optional. Save a routine you repeat, then drop it into any day in one tap from the ★ My sessions folder. Day to day, just use Add exercises on the Plan tab.'),
     h('a', { class: 'btn block', href: '#/sessions/new', style: { marginBottom: '14px' } }, '+ New session'),
     list.length ? list.map(card) : h('div', { class: 'empty' }, 'No sessions yet. Tap New session, then open the folders (e.g. Strength › Chest and Cardio › Swim) and stack what you want.'));
 };
@@ -19,30 +20,32 @@ function card(s) {
     s.exercises.length ? h('div', { class: 'small', style: { marginTop: '6px' } }, s.exercises.slice(0, 4).map(e => e.name).join(' · ') + (s.exercises.length > 4 ? ' …' : '')) : null);
 }
 
-/* ---------- your range for one exercise (asked the first time you use it) ---------- */
+/* ---------- your optional range for one exercise (min = level 1, max = level 10) ---------- */
 // Fills `box` with the form; calls done(lib) after saving.
 PT.rangeForm = function (box, lib, done, cancel) {
   const r = JSON.parse(JSON.stringify(lib.range || { min: {}, max: {} }));
-  let kind = lib.kind || 'strength', unit = lib.unit || ((lib.muscles || []).includes('swim') ? 'm' : 'km');
+  let kind = lib.kind || 'strength', unit = lib.unit || 'km';
   function col(which, label) {
     const v = r[which];
     const f = kind === 'strength'
       ? [PT.field('Sets', PT.numInput(v.sets, x => v.sets = x, '', '1')), PT.field('Reps', PT.numInput(v.reps, x => v.reps = x, '', '1')), PT.field('Kg', PT.numInput(v.kg, x => v.kg = x, 'body', '0.5'))]
       : kind === 'cardio'
         ? [PT.field('Distance (' + unit + ')', PT.numInput(v.distance, x => v.distance = x)), PT.field('Time', PT.durInput(v.time, x => v.time = x, 'h:mm:ss'))]
+        : kind === 'laps'
+        ? [PT.field('Sets', PT.numInput(v.sets, x => v.sets = x, '1', '1')), PT.field('Laps per set (' + PT.pool() + ' m)', PT.numInput(v.laps, x => v.laps = x, '', '1')), PT.field('Time (optional)', PT.durInput(v.time, x => v.time = x, 'm:ss'))]
         : [PT.field('Rounds', PT.numInput(v.rounds, x => v.rounds = x, '', '1')), PT.field('Time per round', PT.durInput(v.time, x => v.time = x, 'm:ss'))];
     return h('div', { class: 'card', style: { margin: 0 } }, h('b', { class: which === 'max' ? 'red' : '' }, label), gap(6), f.map(x => h('div', { style: { marginBottom: '6px' } }, x)));
   }
   function draw() {
     PT.fill(box,
-      h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Tell the app your own range once. Level 1 is your warm-up or easiest, level 10 is your max. After this you just pick a level.'),
+      h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Optional. Your easiest (level 1) and your max (level 10). The app uses it to suggest a target. What you actually do is always what gets tracked.'),
       h('label', { class: 'f' }, 'Measured by'), PT.seg(PT.KINDS, kind, v => { kind = v; draw(); }), gap(8),
       kind === 'cardio' ? h('div', { style: { marginBottom: '8px' } }, PT.seg([['km', 'km'], ['m', 'metres']], unit, v => { unit = v; draw(); })) : null,
       h('div', { class: 'grid2' }, col('min', 'Level 1 · warm-up'), col('max', 'Level 10 · max')), gap(12),
       h('div', { class: 'row' },
         cancel ? h('button', { class: 'btn ghost grow', onclick: cancel }, 'Back') : null,
         h('button', { class: 'btn grow', onclick: () => {
-          const keys = kind === 'strength' ? ['sets', 'reps', 'kg'] : kind === 'cardio' ? ['distance', 'time'] : ['rounds', 'time'];
+          const keys = PT.FIELDS[kind];
           const any = w => keys.some(k => +r[w][k]);
           if (!any('min') || !any('max')) { PT.toast('Fill in both levels'); return; }
           lib.kind = kind; lib.unit = kind === 'cardio' ? unit : ''; lib.range = { min: pick(r.min, keys), max: pick(r.max, keys) };
@@ -53,25 +56,9 @@ PT.rangeForm = function (box, lib, done, cancel) {
   draw();
 };
 
-// Level 1–10 chooser with a live preview of what that means for you.
-PT.levelForm = function (box, lib, level, onPick, back, addLabel) {
-  let lv = level || 7;
-  const out = h('div', { class: 'stat', style: { margin: '6px 0' } }), lab = h('div', { class: 'red', style: { fontWeight: 800 } });
-  const upd = () => { lab.textContent = 'Level ' + lv + ' / 10'; out.textContent = PT.exText(PT.atLevel(lib, lv)); };
-  const slider = h('input', { type: 'range', min: 1, max: 10, step: 1, value: lv });
-  slider.addEventListener('input', () => { lv = +slider.value; upd(); });
-  upd();
-  PT.fill(box,
-    h('h3', {}, lib.name), gap(8), lab, out, slider,
-    h('div', { class: 'row between small muted' }, h('span', {}, 'Warm-up'), h('span', {}, 'Max')), gap(12),
-    h('div', { class: 'row' },
-      back ? h('button', { class: 'btn ghost grow', onclick: back }, 'Back') : null,
-      h('button', { class: 'btn grow', onclick: () => onPick(lv) }, addLabel || 'Add')),
-    gap(10), h('button', { class: 'btn ghost small block', onclick: () => PT.rangeForm(box, lib, () => PT.levelForm(box, lib, lv, onPick, back, addLabel), () => PT.levelForm(box, lib, lv, onPick, back, addLabel)) }, 'Change my range'));
-};
-
 /* ---------- folder browser: pick exercises or whole saved sessions ---------- */
 // onAdd(list of session-exercises), called each time something is added. The sheet stays open so you can stack.
+// opts.onStretch(stretchId, phase): if given, folders also show prep moves and stretches you can add.
 PT.browseSheet = function (onAdd, opts) {
   opts = opts || {};
   const box = h('div', {});
@@ -106,7 +93,7 @@ PT.browseSheet = function (onAdd, opts) {
   function exRow(lib, back, from) {
     const set = PT.hasRange(lib);
     return h('div', { class: 'card tap', onclick: () => choose(lib, back, from) },
-      h('div', { class: 'row between' }, h('b', {}, lib.name), h('span', { class: 'pill' + (set ? ' done' : '') }, set ? 'range set' : 'first time')),
+      h('div', { class: 'row between' }, h('b', {}, lib.name), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '22px' } }, '+')),
       set ? h('div', { class: 'small muted' }, PT.exText(PT.atLevel(lib, 1)) + '  →  ' + PT.exText(PT.atLevel(lib, 10))) : null);
   }
 
@@ -114,7 +101,19 @@ PT.browseSheet = function (onAdd, opts) {
     const rows = PT.state.exercises.filter(e => (e.muscles || []).includes(tag)).sort((a, b) => a.name.localeCompare(b.name));
     PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, title), addedLine(),
       rows.length ? rows.map(e => exRow(e, () => folder(tag, title), title.split(' › ')[1])) : h('div', { class: 'empty' }, 'Nothing here yet.'),
-      h('button', { class: 'btn ghost block', onclick: () => newEx(tag, () => folder(tag, title), title.split(' › ')[1]) }, '+ New exercise in this folder'), done);
+      h('button', { class: 'btn ghost block', onclick: () => newEx(tag, () => folder(tag, title), title.split(' › ')[1]) }, '+ New exercise in this folder'),
+      opts.onStretch ? stretchesIn(tag, title) : null, done);
+  }
+
+  // Prep moves and stretches that live in this folder, split into before and after.
+  function stretchesIn(tag, title) {
+    const back = () => folder(tag, title);
+    return [PT.PHASES.map(([ph, label]) => {
+      const list = PT.allStretches().filter(x => PT.phaseOf(x) === ph && x.tags.includes(tag));
+      return [h('h2', {}, 'Stretches · ' + label), list.map(st => h('div', { class: 'card tap', onclick: () => { opts.onStretch(st.id, ph); added++; PT.toast('Added ' + st.name + ' to ' + (ph === 'before' ? 'Before' : 'After')); back(); } },
+        h('div', { class: 'row between', style: { flexWrap: 'nowrap' } }, h('div', {}, h('b', {}, st.name + (st.own ? ' ★' : '')), h('div', { class: 'small muted' }, st.hold)), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '22px' } }, '+'))))];
+    }),
+    h('button', { class: 'btn ghost block', onclick: () => PT.stretchForm(box, [tag], 'after', st => { opts.onStretch(st.id, PT.phaseOf(st)); added++; PT.toast('Saved and added ' + st.name); back(); }, back) }, '+ New stretch in this folder')];
   }
 
   function newEx(tag, back, from) {
@@ -124,19 +123,19 @@ PT.browseSheet = function (onAdd, opts) {
       h('button', { class: 'btn block', onclick: () => {
         const name = d.name.trim(); if (!name) { PT.toast('Name it first'); return; }
         if (PT.state.exercises.some(e => e.name.toLowerCase() === name.toLowerCase())) { PT.toast('You already have that one'); return; }
-        const kind = ['run', 'swim', 'bike'].includes(tag) ? 'cardio' : tag === 'mma' ? 'time' : 'strength';
-        const lib = { id: PT.uid(), name, muscles: [tag], kind, unit: tag === 'swim' ? 'm' : 'km', notes: '', link: '' };
+        const kind = PT.defaultKind(tag);
+        const lib = { id: PT.uid(), name, muscles: [tag], kind, unit: kind === 'cardio' ? 'km' : '', notes: '', link: '' };
         PT.state.exercises.push(lib); PT.save(); choose(lib, back, from);
-      } }, 'Next: set your range'));
+      } }, 'Add it'),
+      h('p', { class: 'small muted' }, 'You can set its min/max later for a suggested target. It is optional.'));
   }
 
   function choose(lib, back, from) {
     if (!from) { const t = (lib.muscles || [])[0]; from = t ? PT.tagLabel(t) : lib.name; }
-    const pickLevel = () => PT.levelForm(box, lib, 7, lv => {
-      onAdd([{ id: PT.uid(), exId: lib.id, name: lib.name, kind: lib.kind, level: lv }], null, from);
-      added++; PT.toast('Added ' + lib.name + ' · level ' + lv); back();
-    }, back);
-    if (PT.hasRange(lib)) pickLevel(); else PT.rangeForm(box, lib, pickLevel, back);
+    // One tap adds it. The level starts where you last had it (or 7) and can be changed afterwards.
+    const lv = PT.lastLevel(lib) || 7;
+    onAdd([{ id: PT.uid(), exId: lib.id, name: lib.name, kind: lib.kind || 'strength', level: lv }], null, from);
+    added++; PT.toast('Added ' + lib.name); back();
   }
 
   function sessionsFolder() {

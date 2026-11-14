@@ -13,12 +13,11 @@ const food = id => PT.state.foods.find(x => x.id === id);
 const qtyText = (f, qty) => f && +f.portionG ? g0(qty * f.portionG) + ' g' : (qty === 1 ? '' : '×' + PT.r1(qty)) + (f && f.portion ? (qty === 1 ? '' : ' ') + f.portion : '');
 
 /* ---------- how hard the day is → calorie target ---------- */
-// Training load 0–10: your hardest planned session that day, plus 2 for each extra session.
+// Training load 0–10: the average level of the day's exercises, plus 1 for every 4 exercises beyond the first 4.
 PT.dayLoad = date => {
-  const items = ((PT.state.plan[date] || {}).items) || [];
-  const lv = items.map(it => PT.itemLevel(it, PT.session(it.sessionId))).filter(Boolean);
-  if (!lv.length) return 0;
-  return Math.min(10, Math.max(...lv) + 2 * (lv.length - 1));
+  const n = PT.dayExs(date).length;
+  if (!n) return 0;
+  return Math.min(10, PT.dayLevel(date) + Math.floor(Math.max(0, n - 4) / 4));
 };
 // Rest-day targets are yours; on training days the extra calories (up to your hardest-day number) go to carbs.
 PT.dayTargets = date => {

@@ -90,3 +90,5 @@ button.back{background:none;border:0;padding:0;font:inherit;cursor:pointer}
 .stepper{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
 .stepper:last-child{border-bottom:0}
 .stepper .btn{min-width:42px;font-size:18px}
+.seg.tight{gap:2px}.seg.tight button{padding:9px 0;min-width:0}
+details.fold{margin:0}details.fold>summary{list-style:none;color:var(--text);font-size:16px}details.fold>summary::-webkit-details-marker{display:none}details.fold>summary .row>span::after{content:' ▸';color:var(--red2)}details.fold[open]>summary .row>span::after{content:' ▾'}
