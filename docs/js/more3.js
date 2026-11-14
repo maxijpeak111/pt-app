@@ -20,6 +20,28 @@ PT.moreViews.code = function () {
 };
 
 /* ---------- settings & backup ---------- */
+/* ---------- backups ---------- */
+// Save a backup file (on iPhone: choose Save to Files / iCloud Drive) and remember when.
+PT.saveBackup = () => {
+  PT.state.settings.lastBackup = PT.today(); PT.save();
+  download('pt-backup-' + PT.today() + '.json', JSON.stringify(PT.state, null, 2));
+};
+PT.copyBackup = () => copyText(JSON.stringify(PT.state, null, 2)).then(() => {
+  PT.state.settings.lastBackup = PT.today(); PT.save(); PT.toast('Copied. Paste it into Notes.');
+});
+PT.daysSinceBackup = () => PT.state.settings.lastBackup ? PT.daysBetween(PT.state.settings.lastBackup, PT.today()) : null;
+// Shown on the Plan tab when a backup is 7+ days old (or never made) and there is something worth saving.
+PT.backupNudge = () => {
+  const s = PT.state, n = PT.daysSinceBackup();
+  const hasData = s.logs.length || Object.values(s.plan).some(d => (d.exs || []).length || d.note || d.shift) || s.foods.length;
+  if (!hasData || (n != null && n < 7) || s.settings.backupSnooze === PT.today()) return null;
+  return h('div', { class: 'card reminder' },
+    h('b', { class: 'red' }, 'Back up your data'),
+    h('div', { class: 'small', style: { margin: '4px 0 10px' } }, (n == null ? 'You have never made a backup.' : 'Last backup ' + n + ' days ago.') + ' Your data only lives on this phone. Save a copy to Files or iCloud Drive.'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn small grow', onclick: () => { PT.saveBackup(); PT.render(); } }, 'Save backup'),
+      h('button', { class: 'btn ghost small', onclick: () => { s.settings.backupSnooze = PT.today(); PT.save(); PT.render(); } }, 'Later')));
+};
 function download(name, text) {
   const a = h('a', { href: URL.createObjectURL(new Blob([text], { type: 'application/json' })), download: name });
   document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
@@ -50,7 +72,6 @@ PT.moreViews.settings = function () {
     prev.textContent = 'Example: a 100 kg lift becomes ' + Math.round(f(1) / 2.5) * 2.5 + ' kg at 1, ' + Math.round(f(5) / 2.5) * 2.5 + ' kg at 5 and ' + Math.round(f(10) / 2.5) * 2.5 + ' kg at 10. A 10 km run becomes ' + PT.r1(10 * PT.factor(1)) + ' / ' + PT.r1(10 * PT.factor(5)) + ' / ' + PT.r1(10 * PT.factor(10)) + ' km.';
   };
   upd();
-  const json = () => JSON.stringify(PT.state, null, 2);
   return h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Settings'),
     h('h2', {}, 'Intensity range'),
     h('div', { class: 'card' },
@@ -68,8 +89,9 @@ PT.moreViews.settings = function () {
     h('div', { class: 'card' },
       h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your data lives only on this phone, inside this app. Deleting the app or clearing website data erases it. Back up regularly: copy it into a note or save the file.'),
       h('div', { class: 'row' },
-        h('button', { class: 'btn small grow', onclick: () => { download('pt-backup-' + PT.today() + '.json', json()); } }, 'Download file'),
-        h('button', { class: 'btn ghost small grow', onclick: () => copyText(json()).then(() => PT.toast('Copied. Paste it into Notes.')) }, 'Copy text')),
+        h('button', { class: 'btn small grow', onclick: () => { PT.saveBackup(); PT.render(); } }, 'Download file'),
+        h('button', { class: 'btn ghost small grow', onclick: () => PT.copyBackup().then(() => PT.render()) }, 'Copy text')),
+      h('div', { class: 'small muted', style: { marginTop: '8px' } }, PT.daysSinceBackup() == null ? 'No backup made yet.' : 'Last backup: ' + PT.niceDate(PT.state.settings.lastBackup) + (PT.daysSinceBackup() ? ' (' + PT.daysSinceBackup() + ' days ago)' : ' (today)') + '. On iPhone, choose Save to Files, then iCloud Drive.'),
       gap(8), h('button', { class: 'btn ghost small block', onclick: restoreSheet }, 'Restore from backup')),
     h('h2', {}, 'Danger zone'),
     h('button', { class: 'btn danger block', onclick: () => PT.confirm('Erase ALL data in the app? This cannot be undone. Make a backup first if unsure.', 'Erase everything', () => { try { localStorage.removeItem('pt.v1'); } catch (e) { /* ignore */ } location.hash = '#/plan'; location.reload(); }) }, 'Erase all data'))

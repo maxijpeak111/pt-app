@@ -30,6 +30,7 @@ function weekView() {
   const q = PT.todayQuote();
   return h('div', {},
     h('h1', {}, 'Plan'),
+    PT.backupNudge ? PT.backupNudge() : null,
     q ? h('div', { class: 'quote' }, '“' + q.text + '”', q.by ? h('small', {}, q.by) : null) : null,
     h('div', { class: 'week-nav' },
       h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.addDays(anchor, -7); PT.render(); } }, '‹'),
