@@ -21,9 +21,9 @@ const KEY = 'pt.v1';
 function defaults() {
   return {
     v: 1, seeded: false,
-    settings: { minPct: 60, maxPct: 110, poolM: 18, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
+    settings: { minPct: 60, maxPct: 110, poolM: 18, shiftPresets: [], bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], recoveryLog: {},
-    foods: [], meals: [], foodLog: {}, fuelActual: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
+    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
 }
 function merge(d, o) {
@@ -230,6 +230,24 @@ PT.scaleEx = (ex, i) => {
   return o;
 };
 PT.session = id => PT.state.sessions.find(x => x.id === id);
+
+/* ---------- shifts: named from the start time ---------- */
+PT.shiftName = sh => (sh.start || '') < '12:00' ? 'Morning shift' : 'Evening shift';
+PT.shiftText = sh => sh ? PT.shiftName(sh) + ' ' + sh.start + '–' + sh.end : 'Day off';
+
+/* ---------- a day's training as a plain title, e.g. "Swim and chest day" ---------- */
+const AREA = { swim: 'swim', run: 'run', bike: 'bike', mma: 'MMA', chest: 'chest', back: 'back', shoulders: 'shoulders', arms: 'arms', legs: 'legs', core: 'core', full: 'full body' };
+PT.dayTitle = date => {
+  const areas = [];
+  PT.dayExs(date).forEach(en => {
+    const lib = PT.libEx(en);
+    const a = lib ? (PT.sportOf(lib) || (lib.muscles || [])[0]) : (en.kind === 'laps' ? 'swim' : en.sport);
+    if (a && AREA[a] && !areas.includes(AREA[a])) areas.push(AREA[a]);
+  });
+  if (!areas.length) return PT.dayExs(date).length ? 'Training day' : '';
+  const list = areas.slice(0, 3), txt = list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0];
+  return txt.charAt(0).toUpperCase() + txt.slice(1) + (areas.length > 3 ? ' +' : '') + ' day';
+};
 
 /* ---------- your own range per exercise: warm-up (level 1) to max (level 10) ---------- */
 PT.libEx = ex => ex && ((ex.exId && PT.state.exercises.find(x => x.id === ex.exId)) ||

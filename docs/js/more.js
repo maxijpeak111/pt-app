@@ -7,8 +7,8 @@ PT.moreViews = {};
 PT.views.more = function (parts) {
   const v = parts[1] && PT.moreViews[parts[1]];
   if (v) return v(parts);
-  const items = [['progress', 'Progress & goals'], ['sleep', 'Sleep'], ['mind', 'Meditation'], ['exercises', 'Exercise library'], ['code', 'Your code (motivation)'], ['settings', 'Settings & backup']];
-  return h('div', {}, h('h1', {}, 'More'), h('div', { class: 'menu' }, items.map(([k, l]) => h('a', { href: '#/more/' + k }, l, h('span', {}, '›')))));
+  const items = [['#/more/progress', 'Progress & goals'], ['#/sessions', 'Session library'], ['#/more/exercises', 'Exercise library'], ['#/more/sleep', 'Sleep'], ['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)'], ['#/more/settings', 'Settings & backup']];
+  return h('div', {}, h('h1', {}, 'More'), h('div', { class: 'menu' }, items.map(([href, l]) => h('a', { href }, l, h('span', {}, '›')))));
 };
 
 /* ---------- progress & goals ---------- */

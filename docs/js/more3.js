@@ -3,6 +3,29 @@
 const PT = window.PT, h = PT.h;
 const gap = px => h('div', { style: { height: px + 'px' } });
 
+/* ---------- journal: private, longer writing about each day ---------- */
+// Separate from the day page Notes (those are quick plan notes and reminders).
+PT.views.journal = function (parts) {
+  const date = parts[1] || PT.today(), j = PT.state.journal;
+  const words = h('span', { class: 'small muted' });
+  const count = () => { const n = (j[date] || '').trim().split(/\s+/).filter(Boolean).length; words.textContent = n ? n + (n === 1 ? ' word · saved' : ' words · saved') : ''; };
+  const area = h('textarea', { class: 'journal-text', placeholder: 'How did today really go? How you felt, sleep, energy, what went well, what to work on, anything on your mind…', value: j[date] || '' });
+  area.addEventListener('input', () => { if (area.value.trim()) j[date] = area.value; else delete j[date]; PT.save(); count(); });
+  count();
+  const past = Object.keys(j).filter(d => d !== date && (j[d] || '').trim()).sort().reverse();
+  return h('div', {},
+    h('h1', {}, 'Journal'),
+    h('div', { class: 'week-nav' },
+      h('button', { class: 'btn ghost small', onclick: () => { location.hash = '#/journal/' + PT.addDays(date, -1); } }, '‹'),
+      h('div', { class: 'week-title' }, date === PT.today() ? 'Today · ' + PT.niceDate(date) : PT.niceDate(date)),
+      h('button', { class: 'btn ghost small', onclick: () => { location.hash = '#/journal/' + PT.addDays(date, 1); } }, '›')),
+    area, h('div', { class: 'row between', style: { marginTop: '6px' } }, words, date !== PT.today() ? h('a', { class: 'small red', href: '#/journal' }, 'Back to today') : h('span')),
+    h('h2', {}, past.length ? 'Past entries' : 'Past entries · none yet'),
+    past.slice(0, 60).map(d => h('a', { class: 'card tap', href: '#/journal/' + d },
+      h('div', { class: 'row between' }, h('b', {}, PT.niceDate(d)), h('span', { class: 'red' }, '›')),
+      h('div', { class: 'small muted' }, j[d].length > 110 ? j[d].slice(0, 110).trim() + '…' : j[d]))));
+};
+
 /* ---------- your code (motivation: only what you write) ---------- */
 PT.moreViews.code = function () {
   const s = PT.state, q = PT.todayQuote(), nq = { text: '', by: '' };
@@ -64,6 +87,26 @@ function restoreSheet() {
     } }, 'Restore')));
 }
 
+// Shift presets: tap one on any day. Named Morning (starts before 12:00) or Evening automatically.
+function usualShifts() {
+  const st = PT.state.settings; st.shiftPresets = st.shiftPresets || [];
+  const box = h('div', {}), n = { start: '07:00', end: '15:00' };
+  const draw = () => PT.fill(box,
+    st.shiftPresets.length ? st.shiftPresets.map((sh, i) => h('div', { class: 'row between', style: { padding: '6px 0', borderBottom: '1px solid var(--line)' } },
+      h('span', {}, PT.shiftText(sh)),
+      h('button', { class: 'btn danger small', onclick: () => { st.shiftPresets.splice(i, 1); PT.save(); draw(); } }, '✕'))) : h('div', { class: 'small muted' }, 'None yet. Add your few shift times; on each day you then just tap one.'),
+    h('div', { class: 'grid2', style: { margin: '10px 0 8px' } },
+      PT.field('Start', h('input', { type: 'time', value: n.start, oninput: e => n.start = e.target.value })),
+      PT.field('End', h('input', { type: 'time', value: n.end, oninput: e => n.end = e.target.value }))),
+    h('button', { class: 'btn small block', onclick: () => {
+      if (!st.shiftPresets.some(x => x.start === n.start && x.end === n.end)) st.shiftPresets.push({ start: n.start, end: n.end });
+      st.shiftPresets.sort((x, y) => x.start < y.start ? -1 : 1); PT.save(); draw();
+    } }, 'Add usual shift'),
+    h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Starting before 12:00 = Morning shift, otherwise Evening shift.'));
+  draw();
+  return box;
+}
+
 PT.moreViews.settings = function () {
   const s = PT.state.settings, ex = 100;
   const prev = h('div', { class: 'small muted' });
@@ -77,6 +120,8 @@ PT.moreViews.settings = function () {
     h('div', { class: 'card' },
       h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your session as written is the base (100%). Intensity 1 uses your minimum, 10 uses your maximum, and the steps between are even. This scales weights, distances and times.'),
       h('div', { class: 'grid2' }, PT.field('Intensity 1 = % of base', PT.numInput(s.minPct, v => { s.minPct = v; PT.save(); upd(); }, '60', '1')), PT.field('Intensity 10 = % of base', PT.numInput(s.maxPct, v => { s.maxPct = v; PT.save(); upd(); }, '110', '1'))), gap(8), prev),
+    h('h2', {}, 'My usual shifts'),
+    h('div', { class: 'card' }, usualShifts()),
     h('h2', {}, 'Swimming'),
     h('div', { class: 'card' }, PT.field('Pool length (m) · swims are logged in laps of this', PT.numInput(s.poolM, v => { s.poolM = v; PT.save(); }, '18', '1'))),
     h('h2', {}, 'Body weight'),

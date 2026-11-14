@@ -7,10 +7,11 @@ PT.views.sessions = function (parts) {
   if (parts[1]) return editor(parts[1]);
   const list = PT.state.sessions;
   return h('div', {},
-    h('h1', {}, 'Sessions'),
-    h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Optional. Save a routine you repeat, then drop it into any day in one tap from the ★ My sessions folder. Day to day, just use Add exercises on the Plan tab.'),
+    PT.back('#/more', 'More'),
+    h('h1', {}, 'Session library'),
+    h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Build routines you repeat. On any day, tap Add exercises and open ★ Session library to drop a whole session in, or pick single exercises from the folders.'),
     h('a', { class: 'btn block', href: '#/sessions/new', style: { marginBottom: '14px' } }, '+ New session'),
-    list.length ? list.map(card) : h('div', { class: 'empty' }, 'No sessions yet. Tap New session, then open the folders (e.g. Strength › Chest and Cardio › Swim) and stack what you want.'));
+    list.length ? list.map(card) : h('div', { class: 'empty' }, 'No sessions yet. Tap New session, open the folders (e.g. Chest, then Swim) and stack what you want.'));
 };
 
 function card(s) {
@@ -79,9 +80,9 @@ PT.browseSheet = function (onAdd, opts) {
     function folders() {
       const mine = PT.state.sessions.filter(s => s.id !== opts.skipId);
       return [
-        !opts.noSessions && mine.length ? h('div', { class: 'card tap folder', onclick: sessionsFolder }, h('div', { class: 'row between' }, h('b', {}, '★ My sessions'), h('span', { class: 'muted small' }, mine.length + ' ›'))) : null,
+        !opts.noSessions ? h('div', { class: 'card tap folder', onclick: sessionsFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Session library'), h('span', { class: 'muted small' }, mine.length + ' ›'))) : null,
         PT.FOLDERS.map(([group, list]) => [h('h2', {}, group), h('div', { class: 'folders' }, list.map(([tag, label]) => {
-          const n = PT.state.exercises.filter(e => (e.muscles || []).includes(tag)).length;
+          const n = PT.state.exercises.filter(e => (e.muscles || []).includes(tag) && !(group === 'Strength' && ['cardio', 'laps'].includes(e.kind))).length;
           return h('div', { class: 'folder-tile', onclick: () => folder(tag, group + ' › ' + label) }, h('b', {}, label), h('span', { class: 'small muted' }, n + ' exercises'));
         }))])
       ];
@@ -152,8 +153,8 @@ PT.browseSheet = function (onAdd, opts) {
 
   function sessionsFolder() {
     const mine = PT.state.sessions.filter(s => s.id !== opts.skipId);
-    PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, 'My sessions'), addedLine(),
-      h('p', { class: 'small muted' }, 'Tap one to stack all of its exercises in, at the levels you saved.'),
+    PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, 'Session library'), addedLine(),
+      h('p', { class: 'small muted' }, mine.length ? 'Tap one to stack all of its exercises in, at the levels you saved.' : 'No saved sessions yet. Build them in More → Session library.'),
       mine.map(s => h('div', { class: 'card tap', onclick: () => {
         onAdd(s.exercises.map(e => Object.assign(JSON.parse(JSON.stringify(e)), { id: PT.uid() })), s, s.name);
         added += s.exercises.length; PT.toast('Added ' + s.name); sessionsFolder();
@@ -180,7 +181,7 @@ function deriveType(tags, exs) {
 
 function editor(id) {
   const existing = PT.session(id);
-  if (id !== 'new' && !existing) return h('div', {}, PT.back('#/sessions'), h('div', { class: 'empty' }, 'That session no longer exists.'));
+  if (id !== 'new' && !existing) return h('div', {}, PT.back('#/sessions', 'Session library'), h('div', { class: 'empty' }, 'That session no longer exists.'));
   const draft = existing ? JSON.parse(JSON.stringify(existing)) : { id: PT.uid(), name: '', type: 'strength', tags: [], exercises: [] };
   const parts = []; // names of what was stacked, used to suggest a session name
   let nameTouched = !!existing;
@@ -218,7 +219,7 @@ function editor(id) {
 
   function draw() {
     PT.fill(root,
-      PT.back('#/sessions'),
+      PT.back('#/sessions', 'Session library'),
       h('h1', {}, existing ? 'Edit session' : 'New session'),
       PT.field('Name', nameIn), gap(14),
       h('button', { class: 'btn block', onclick: () => PT.browseSheet((list, fromSession, from) => {

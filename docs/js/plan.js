@@ -44,19 +44,17 @@ function weekView() {
     h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => PT.importSheet() }, 'Import calendar'));
 }
 
+// One day in the week list, as plain lines: shift, training, reminders.
 function dayCard(date) {
   const day = PT.state.plan[date] || {}, exs = day.exs || [];
-  const fuel = PT.dayFuel(date), rec = PT.state.recoveryLog[date] || {};
+  const title = PT.dayTitle(date), done = exs.filter(PT.hasActual).length;
+  const rems = PT.remindersFor(date);
   return h('a', { class: 'card tap' + (date === PT.today() ? ' today' : ''), href: '#/plan/' + date },
     h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date))),
-    day.shift ? h('span', { class: 'pill shift' }, 'Shift ' + day.shift.start + '–' + day.shift.end + (day.shift.label ? ' · ' + day.shift.label : '')) : h('span', { class: 'pill' }, 'No shift'),
-    (day.events || []).map(ev => h('span', { class: 'pill' }, PT.eventsText(ev))),
-    exs.slice(0, 6).map(en => h('span', { class: 'pill ' + (PT.hasActual(en) ? 'done' : 'type') }, en.name + (PT.hasActual(en) ? ' ✓' : ''))),
-    exs.length > 6 ? h('span', { class: 'pill' }, '+' + (exs.length - 6) + ' more') : null,
-    !exs.length ? h('div', { class: 'muted small' }, 'Nothing planned') : null,
-    PT.remindersFor(date).length ? h('span', { class: 'pill shift' }, PT.remindersFor(date).length === 1 ? '1 reminder' : PT.remindersFor(date).length + ' reminders') : null,
-    (fuel.kcal || rec.sauna || rec.bike || rec.walk) ? h('div', { class: 'small muted', style: { marginTop: '4px' } },
-      [fuel.kcal ? Math.round(fuel.kcal) + ' kcal' : null, rec.sauna ? 'sauna ' + rec.sauna + 'm' : null, rec.bike ? 'bike ' + rec.bike + 'm' : null, rec.walk ? 'walk ' + rec.walk + 'm' : null].filter(Boolean).join(' · ')) : null);
+    h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
+    title ? h('div', { class: 'day-line' }, h('b', {}, title), done ? h('span', { class: done === exs.length ? 'ok' : 'muted' }, ' · ' + (done === exs.length ? 'done ✓' : done + ' of ' + exs.length + ' done')) : null)
+      : h('div', { class: 'day-line muted' }, 'Rest day'),
+    rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text)));
 }
 
 function copyShifts() {
@@ -135,16 +133,29 @@ function dayView(date) {
   const isToday = date === PT.today();
   const root = h('div', {}, PT.back('#/plan', 'Week'), h('h1', {}, isToday ? 'Today · ' + PT.niceDate(date) : PT.niceDate(date)));
 
-  // shift: always at the top; tap to change it
-  const shift = day.shift ? Object.assign({}, day.shift) : { label: '', start: '09:00', end: '17:00' };
-  root.append(PT.section('shift', day.shift ? 'Shift ' + day.shift.start + '–' + day.shift.end : 'No shift', day.shift ? (day.shift.label || 'Tap to change') : 'Tap to add one', [
-    h('div', { class: 'grid2' },
-      PT.field('Start', h('input', { type: 'time', value: shift.start, oninput: e => shift.start = e.target.value })),
-      PT.field('End', h('input', { type: 'time', value: shift.end, oninput: e => shift.end = e.target.value }))),
-    h('div', { style: { margin: '8px 0' } }, PT.field('Label (optional)', h('input', { placeholder: 'e.g. Early, Late, Gym floor', value: shift.label || '', oninput: e => shift.label = e.target.value }))),
-    h('div', { class: 'row' },
-      h('button', { class: 'btn small grow', onclick: () => { ensureDay(date).shift = Object.assign({}, shift); PT.save(); PT.toast('Shift saved'); PT.render(); } }, day.shift ? 'Update shift' : 'Save shift'),
-      day.shift ? h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).shift = null; PT.save(); PT.render(); } }, 'Clear') : null)]));
+  // shift: always at the top. Tap one of your usual shifts, or set other times.
+  const shift = day.shift ? Object.assign({}, day.shift) : { start: '07:00', end: '15:00' };
+  const setShift = sh => { ensureDay(date).shift = sh ? { start: sh.start, end: sh.end } : null; PT.save(); PT.render(); };
+  const presets = PT.state.settings.shiftPresets || [];
+  const same = sh => day.shift && day.shift.start === sh.start && day.shift.end === sh.end;
+  root.append(PT.section('shift', PT.shiftText(day.shift), presets.length ? 'Tap to change' : 'Tap to set your shift', [
+    h('div', {},
+      presets.map(sh => h('span', { class: 'chip' + (same(sh) ? ' on' : ''), onclick: () => setShift(sh) }, PT.shiftText(sh))),
+      h('span', { class: 'chip' + (!day.shift ? ' on' : ''), onclick: () => setShift(null) }, 'Day off')),
+    !presets.length ? h('p', { class: 'small muted' }, 'Set the times once and tap "Save as a usual shift". Next time it is one tap. Shifts starting before 12:00 are morning shifts, later ones evening shifts.') : null,
+    h('div', { class: 'card', style: { marginTop: '6px' } },
+      h('b', {}, 'Other times'),
+      h('div', { class: 'grid2', style: { margin: '8px 0' } },
+        PT.field('Start', h('input', { type: 'time', value: shift.start, oninput: e => shift.start = e.target.value })),
+        PT.field('End', h('input', { type: 'time', value: shift.end, oninput: e => shift.end = e.target.value }))),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn small grow', onclick: () => setShift(shift) }, 'Use these times'),
+        h('button', { class: 'btn ghost small grow', onclick: () => {
+          const st = PT.state.settings; st.shiftPresets = st.shiftPresets || [];
+          if (!st.shiftPresets.some(x => x.start === shift.start && x.end === shift.end)) st.shiftPresets.push({ start: shift.start, end: shift.end });
+          st.shiftPresets.sort((x, y) => x.start < y.start ? -1 : 1);
+          setShift(shift); PT.toast('Saved as a usual shift');
+        } }, 'Save as a usual shift')))]));
 
   root.append(remindersCard(date) || '');
 
