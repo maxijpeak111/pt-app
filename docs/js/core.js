@@ -21,9 +21,9 @@ const KEY = 'pt.v1';
 function defaults() {
   return {
     v: 1, seeded: false,
-    settings: { minPct: 60, maxPct: 110, poolM: 18, photoDay: 0, shiftPresets: [], maxTargets: { kcal: '', p: '', c: '', f: '' }, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
+    settings: { minPct: 60, maxPct: 110, poolM: 18, photoDay: 0, heightCm: '', age: '', bodyFat: '', shiftPresets: [], maxTargets: { kcal: '', p: '', c: '', f: '' }, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], routines: [], recoveryLog: {},
-    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, photos: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
+    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, journalLog: {}, journalDraft: '', photos: {}, regular: [], goalAreas: [], sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
 }
 function merge(d, o) {
@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); if (PT.migrate6) PT.migrate6(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); if (PT.migrate6) PT.migrate6(); if (PT.migrate7) PT.migrate7(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -261,7 +261,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 13;
+PT.APP_VERSION = 14;
 PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
@@ -603,6 +603,16 @@ PT.migrate6 = function () {
   st.v = 6; PT.save();
 };
 PT.migrate6();
+
+/* v7: journal entries become a log (several entries a day, kept in a diary in More). */
+PT.migrate7 = function () {
+  const st = PT.state; if ((st.v || 1) >= 7) return;
+  st.journalLog = st.journalLog || {};
+  Object.keys(st.journal || {}).forEach(d => { const t = (st.journal[d] || '').trim(); if (t) (st.journalLog[d] = st.journalLog[d] || []).push({ id: PT.uid(), text: t, at: '' }); });
+  st.journal = {};
+  st.v = 7; PT.save();
+};
+PT.migrate7();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {

@@ -8,8 +8,9 @@ PT.views.more = function (parts) {
   const v = parts[1] && PT.moreViews[parts[1]];
   if (v) return v(parts);
   const groups = [
-    ['Body', [['#/more/photos', 'Progress photos'], ['#/more/progress', 'Goals & history'], ['#/more/sleep', 'Sleep']]],
-    ['Mind', [['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)']]],
+    ['Plan', [['#/more/regular', 'Regular schedule'], ['#/more/goals', 'Goals']]],
+    ['Body', [['#/more/body', 'Body & macros'], ['#/more/photos', 'Progress photos'], ['#/more/progress', 'Trackers & history'], ['#/more/sleep', 'Sleep']]],
+    ['Mind', [['#/more/journal', 'Journal log'], ['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)']]],
     ['App', [['#/more/settings', 'Settings & backup']]]];
   return h('div', {}, h('h1', {}, 'More'), groups.map(([g, items]) => [h('h2', {}, g), h('div', { class: 'menu' }, items.map(([href, l]) => h('a', { href }, l, h('span', {}, '›'))))]));
 };

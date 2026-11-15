@@ -312,7 +312,7 @@ function mealsView() {
   const t = PT.state.settings.targets, mx = PT.maxGoals();
   const line = o => num(o.kcal) ? num(o.kcal) + ' kcal · P ' + num(o.p) + ' · C ' + num(o.c) + ' · F ' + num(o.f) : 'not set';
   return h('div', {}, PT.back('#/library', 'Library'), h('h1', {}, 'Meal library'),
-    h('div', { class: 'card tap', onclick: () => targetsSheet() },
+    h('a', { class: 'card tap', href: '#/more/body' },
       h('div', { class: 'row between' }, h('b', {}, 'Daily macro goals'), h('span', { class: 'red' }, '›')),
       h('div', { class: 'small muted' }, 'Rest day: ' + line(t)), h('div', { class: 'small muted' }, 'Two-session day: ' + line(mx))),
     h('a', { class: 'card tap', href: '#/library/foods' }, h('div', { class: 'row between' }, h('b', {}, 'My foods · ' + PT.state.foods.length), h('span', { class: 'red' }, '›')),

@@ -5,25 +5,26 @@ const gap = px => h('div', { style: { height: px + 'px' } });
 
 /* ---------- journal: private, longer writing about each day ---------- */
 // Separate from the day page Notes (those are quick plan notes and reminders).
-PT.views.journal = function (parts) {
-  const date = parts[1] || PT.today(), j = PT.state.journal;
-  const words = h('span', { class: 'small muted' });
-  const count = () => { const n = (j[date] || '').trim().split(/\s+/).filter(Boolean).length; words.textContent = n ? n + (n === 1 ? ' word · saved' : ' words · saved') : ''; };
-  const area = h('textarea', { class: 'journal-text', placeholder: 'How did today really go? How you felt, sleep, energy, what went well, what to work on, anything on your mind…', value: j[date] || '' });
-  area.addEventListener('input', () => { if (area.value.trim()) j[date] = area.value; else delete j[date]; PT.save(); count(); });
-  count();
-  const past = Object.keys(j).filter(d => d !== date && (j[d] || '').trim()).sort().reverse();
+PT.views.journal = function () {
+  // Write, then "Log journal": the entry goes into your diary (More → Journal log) and the box clears.
+  // Yesterday's entries stay visible here to reflect on.
+  const st = PT.state, today = PT.today(), yest = PT.addDays(today, -1), log = st.journalLog = st.journalLog || {};
+  const area = h('textarea', { class: 'journal-text', placeholder: 'How did today really go? How you felt, sleep, energy, what went well, what to work on, anything on your mind…', value: st.journalDraft || '' });
+  area.addEventListener('input', () => { st.journalDraft = area.value; PT.save(); });
+  const todays = log[today] || [], yList = log[yest] || [];
   return h('div', {},
     h('h1', {}, 'Journal'),
-    h('div', { class: 'week-nav' },
-      h('button', { class: 'btn ghost small', onclick: () => { location.hash = '#/journal/' + PT.addDays(date, -1); } }, '‹'),
-      h('div', { class: 'week-title' }, date === PT.today() ? 'Today · ' + PT.niceDate(date) : PT.niceDate(date)),
-      h('button', { class: 'btn ghost small', onclick: () => { location.hash = '#/journal/' + PT.addDays(date, 1); } }, '›')),
-    area, h('div', { class: 'row between', style: { marginTop: '6px' } }, words, date !== PT.today() ? h('a', { class: 'small red', href: '#/journal' }, 'Back to today') : h('span')),
-    h('h2', {}, past.length ? 'Past entries' : 'Past entries · none yet'),
-    past.slice(0, 60).map(d => h('a', { class: 'card tap', href: '#/journal/' + d },
-      h('div', { class: 'row between' }, h('b', {}, PT.niceDate(d)), h('span', { class: 'red' }, '›')),
-      h('div', { class: 'small muted' }, j[d].length > 110 ? j[d].slice(0, 110).trim() + '…' : j[d]))));
+    h('div', { class: 'small muted', style: { marginTop: '-8px', marginBottom: '10px' } }, 'Today · ' + PT.niceDate(today) + (todays.length ? ' · ' + todays.length + (todays.length === 1 ? ' entry logged' : ' entries logged') : '')),
+    area,
+    h('button', { class: 'btn block', style: { marginTop: '10px' }, onclick: () => {
+      const text = area.value.trim(); if (!text) { PT.toast('Write something first'); return; }
+      const d = new Date(), at = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      (log[today] = log[today] || []).push({ id: PT.uid(), text, at }); st.journalDraft = ''; PT.save(); PT.toast('Logged to your journal'); PT.render();
+    } }, 'Log journal'),
+    h('a', { class: 'btn ghost block', style: { marginTop: '8px' }, href: '#/more/journal' }, 'Open journal log ›'),
+    h('h2', {}, 'Yesterday · ' + PT.niceDate(yest)),
+    yList.length ? yList.map(e => h('div', { class: 'card' }, e.at ? h('div', { class: 'small muted' }, e.at) : null, h('div', { style: { whiteSpace: 'pre-wrap' } }, e.text)))
+      : h('div', { class: 'empty' }, 'Nothing logged yesterday.'));
 };
 
 /* ---------- your code (motivation: only what you write) ---------- */
@@ -128,6 +129,9 @@ PT.moreViews.settings = function () {
     h('div', { class: 'card' }, PT.field('Pool length (m) · swims are logged in laps of this', PT.numInput(s.poolM, v => { s.poolM = v; PT.save(); }, '18', '1'))),
     h('h2', {}, 'Body weight'),
     h('div', { class: 'card' }, PT.field('kg (used by the nutrition suggester)', PT.numInput(s.bodyKg, v => { s.bodyKg = v; PT.save(); }, '', '0.1'))),
+    h('h2', {}, 'Import setup'),
+    h('div', { class: 'card' }, h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Load a prepared setup file (exercises, sessions, goals, foods…). It only adds; nothing is deleted.'),
+      h('button', { class: 'btn small block', onclick: () => PT.setupSheet() }, 'Import setup file')),
     h('h2', {}, 'Import calendar'),
     h('div', { class: 'card' },
       h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Bring in your shifts, appointments and planned sessions from your calendar or rota using Claude. Copy the instructions, paste them into a Claude chat, then paste the reply back here.'),

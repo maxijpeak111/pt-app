@@ -33,8 +33,6 @@ function weekView() {
     PT.backupNudge ? PT.backupNudge() : null,
     PT.photoNudge ? PT.photoNudge() : null,
     q ? h('div', { class: 'quote' }, '“' + q.text + '”', q.by ? h('small', {}, q.by) : null) : null,
-    todayBox(PT.today()),
-    h('h2', {}, 'Week'),
     h('div', { class: 'week-nav' },
       h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.addDays(anchor, -7); PT.render(); } }, '‹'),
       h('div', { class: 'week-title' }, PT.niceDate(days[0]) + ' – ' + PT.niceDate(days[6]),
@@ -47,24 +45,6 @@ function weekView() {
     h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => PT.importSheet() }, 'Import calendar'));
 }
 
-// The first thing you see: today written out in full.
-function todayBox(date) {
-  const day = PT.state.plan[date] || {}, exs = day.exs || [], evs = day.events || [], t = PT.dayTargets ? PT.dayTargets(date) : null;
-  const rems = PT.remindersFor(date), completed = PT.dayCompleted(date);
-  const amtOf = en => { const x = completed && PT.hasActual(en) ? en.actual : PT.hasPlan(en) ? en.plan : null; return x ? PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, x)) : ''; };
-  return h('a', { class: 'card today-box', href: '#/plan/' + date },
-    h('div', { class: 'today-head' }, h('span', {}, '● TODAY'), h('span', {}, PT.niceDate(date))),
-    h('div', { class: 'today-body' },
-      h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
-      rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text)),
-      exs.length ? [h('div', { class: 'day-line', style: { marginTop: '8px' } }, h('b', {}, PT.dayTitle(date)), completed ? h('span', { class: 'ok' }, ' · completed ✓') : null),
-        exs.map(en => h('div', { class: 'today-ex' }, h('span', {}, en.name), h('span', { class: 'muted' }, amtOf(en))))]
-        : h('div', { class: 'day-line muted', style: { marginTop: '6px' } }, 'Rest day · nothing planned'),
-      evs.length ? h('div', { style: { marginTop: '8px' } }, h('div', { class: 'small muted' }, 'Calendar'), evs.map(ev => h('div', { class: 'day-line small' }, PT.eventsText(ev)))) : null,
-      t && t.kcal ? h('div', { class: 'day-line small muted', style: { marginTop: '8px' } }, 'Fuel goal ' + t.kcal + ' kcal · P ' + t.p + ' · C ' + t.c + ' · F ' + t.f) : null,
-      h('div', { class: 'today-open' }, completed ? 'Open today ›' : exs.length ? 'Open today to log ›' : 'Open today to plan ›')));
-}
-
 // One day in the week list: plain lines (shift, training, what's planned, reminders). Tap to open more
 // (calendar, macro goals, notes) and a button into the day.
 function dayCard(date) {
@@ -72,7 +52,10 @@ function dayCard(date) {
   const title = PT.dayTitle(date), completed = PT.dayCompleted(date), isToday = date === PT.today();
   const rems = PT.remindersFor(date), t = PT.dayTargets ? PT.dayTargets(date) : null;
   const note = (day.note || '').split('\n')[0];
-  const det = h('details', { class: 'card daycard' + (isToday ? ' today' : '') },
+  const reg = PT.regularLines ? PT.regularLines(date) : { on: [], sug: [] };
+  const amtOf = en => { const x = completed && PT.hasActual(en) ? en.actual : PT.hasPlan(en) ? en.plan : null; return x ? PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, x)) : ''; };
+  // today opens by itself and shows each exercise with its amount
+  const det = h('details', { class: 'card daycard' + (isToday ? ' today' : ''), open: isToday },
     h('summary', {},
       h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, isToday ? h('span', { class: 'red' }, '● ') : null, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date), h('span', { class: 'chev' }))),
       h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
@@ -80,12 +63,15 @@ function dayCard(date) {
         : h('div', { class: 'day-line muted' }, 'Rest day'),
       planLine(date) ? h('div', { class: 'day-line small muted' }, planLine(date)) : null,
       evs.length ? h('div', { class: 'day-line small' }, evs.length + (evs.length === 1 ? ' event · ' : ' events · ') + PT.eventsText(evs[0])) : null,
+      reg.on.length ? h('div', { class: 'day-line small' }, reg.on.map(r => r.title + (((PT.state.plan[date] || {}).reg || {})[r.id] === 'done' ? ' ✓' : '')).join(' · ')) : null,
+      reg.sug.length ? h('div', { class: 'day-line small muted' }, '+ ' + reg.sug.length + (reg.sug.length === 1 ? ' suggestion' : ' suggestions') + ': ' + reg.sug.map(r => r.title).join(', ')) : null,
       rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text))),
     h('div', { class: 'daycard-more' },
+      isToday && exs.length ? [h('div', { class: 'f' }, 'Training'), exs.map(en => h('div', { class: 'today-ex' }, h('span', {}, en.name), h('span', { class: 'muted' }, amtOf(en)))), h('div', { style: { height: '8px' } })] : null,
       evs.length ? [h('div', { class: 'f' }, 'Calendar'), evs.map(ev => h('div', { class: 'day-line small' }, PT.eventsText(ev)))] : h('div', { class: 'small muted' }, 'No calendar events.'),
       t && t.kcal ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Macro goals'), h('div', { class: 'day-line small' }, t.kcal + ' kcal · P ' + t.p + ' g · C ' + t.c + ' g · F ' + t.f + ' g')] : null,
       note ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Notes'), h('div', { class: 'day-line small' }, note.length > 90 ? note.slice(0, 90) + '…' : note)] : null,
-      h('a', { class: 'btn small block', style: { marginTop: '10px' }, href: '#/plan/' + date }, 'Open ' + PT.dayName(date) + ' ›')));
+      h('a', { class: 'btn small block', style: { marginTop: '10px' }, href: '#/plan/' + date }, isToday ? (exs.length && !completed ? 'Open today to log ›' : 'Open today ›') : 'Open ' + PT.dayName(date) + ' ›')));
   return det;
 }
 
@@ -204,6 +190,7 @@ function dayView(date) {
         } }, 'Save as a usual shift')))]));
 
   root.append(remindersCard(date) || '');
+  root.append((PT.regularBlock && PT.regularBlock(date)) || '');
   if (PT.dayCompleted(date)) root.append(h('div', { class: 'card', style: { borderColor: 'var(--ok)' } }, h('b', { class: 'ok' }, '✓ Day completed'), h('span', { class: 'small muted' }, ' · logged to Progress')));
   else if (date < PT.today() && PT.dayExs(date).length) root.append(h('div', { class: 'card reminder' }, h('b', { class: 'red' }, 'Not completed yet'), h('div', { class: 'small muted' }, 'Fill in what you did, then tap Complete day at the bottom of Training.')));
 
@@ -234,7 +221,7 @@ function dayView(date) {
   root.append(PT.section('fuel', 'Fuel', fuelSum, [
     PT.fuelBlock(date, () => { fuelSum.textContent = PT.fuelSummary(date); }),
     PT.dayMeals(date),
-    h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => PT.targetsSheet() }, 'Daily macro goals')]));
+    h('a', { class: 'btn ghost small block', style: { marginTop: '8px' }, href: '#/more/body' }, 'Daily macro goals ›')]));
 
   // notes: lines that mention another day show up on that day
   const firstLine = (day.note || '').split('\n')[0];
