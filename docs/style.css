@@ -137,3 +137,10 @@ details.daycard[open] .chev::after{content:' ▾'}
 .pp-label{padding:8px 10px;font-weight:800;font-size:14px}
 .pp-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
 .pp-thumb{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;background:var(--panel2);display:flex;align-items:center;justify-content:center;color:var(--muted)}
+.card.daycard.completed{border-color:var(--ok);background:#0d1f14}
+.card.daycard.completed.today{border-width:2px}
+.checkrow.suggested{opacity:.75}
+.sug-dot{width:24px;height:24px;border:1px dashed var(--muted);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--muted);flex:none}
+.goal-item{border-bottom:1px solid var(--line);padding-bottom:8px}
+.goal-detail{margin:6px 0 0 36px}
+.goal-detail textarea{min-height:110px}

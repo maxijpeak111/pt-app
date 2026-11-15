@@ -122,10 +122,12 @@ function bestsCard(e) {
   if ((e.kind || 'strength') === 'strength') {
     const m = e.manual = e.manual || {}, b = PT.exBests(e);
     return [h('h2', {}, 'Best & current'), h('div', { class: 'card' },
-      h('div', { class: 'row between' }, h('div', {}, h('div', { class: 'stat' }, b.best ? b.best + ' kg' : '–'), h('div', { class: 'small muted' }, 'Best')),
-        h('div', { style: { textAlign: 'right' } }, h('div', { class: 'stat' }, b.cur ? b.cur + ' kg' : '–'), h('div', { class: 'small muted' }, 'Current'))),
+      h('div', { class: 'row between' }, h('div', {}, h('div', { class: 'stat' }, b.best ? b.best + ' kg' + (b.bestReps ? ' × ' + b.bestReps : '') : '–'), h('div', { class: 'small muted' }, 'Best')),
+        h('div', { style: { textAlign: 'right' } }, h('div', { class: 'stat' }, b.cur ? b.cur + ' kg' + (b.curReps ? ' × ' + b.curReps : '') : '–'), h('div', { class: 'small muted' }, 'Current'))),
       h('p', { class: 'small muted' }, 'Worked out from your completed days. Lifted more before using the app? Type it here; the higher number wins.'),
-      h('div', { class: 'grid2' }, PT.field('My best (kg)', PT.numInput(m.best, v => { m.best = v; PT.save(); }, '', '0.5')), PT.field('Current (kg)', PT.numInput(m.current, v => { m.current = v; PT.save(); }, '', '0.5'))))];
+      h('div', { class: 'grid2' },
+        PT.field('My best (kg)', PT.numInput(m.best, v => { m.best = v; PT.save(); }, '', '0.5')), PT.field('for how many reps', PT.numInput(m.bestReps, v => { m.bestReps = v; PT.save(); }, '', '1')),
+        PT.field('Current (kg)', PT.numInput(m.current, v => { m.current = v; PT.save(); }, '', '0.5')), PT.field('for how many reps', PT.numInput(m.currentReps, v => { m.currentReps = v; PT.save(); }, '', '1'))))];
   }
   const lv = +e.ability || 0;
   return [h('h2', {}, 'Ability level'), h('div', { class: 'card' },

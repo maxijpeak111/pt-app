@@ -52,23 +52,22 @@ function dayCard(date) {
   const title = PT.dayTitle(date), completed = PT.dayCompleted(date), isToday = date === PT.today();
   const rems = PT.remindersFor(date), t = PT.dayTargets ? PT.dayTargets(date) : null;
   const note = (day.note || '').split('\n')[0];
-  const reg = PT.regularLines ? PT.regularLines(date) : { on: [], sug: [] };
+  const ag = PT.dayAgenda ? PT.dayAgenda(date) : [], agOn = ag.filter(x => !x.suggested), agSug = ag.filter(x => x.suggested);
   const amtOf = en => { const x = completed && PT.hasActual(en) ? en.actual : PT.hasPlan(en) ? en.plan : null; return x ? PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, x)) : ''; };
   // today opens by itself and shows each exercise with its amount
-  const det = h('details', { class: 'card daycard' + (isToday ? ' today' : ''), open: isToday },
+  const det = h('details', { class: 'card daycard' + (isToday ? ' today' : '') + (completed ? ' completed' : ''), open: isToday },
     h('summary', {},
       h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, isToday ? h('span', { class: 'red' }, '● ') : null, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date), h('span', { class: 'chev' }))),
       h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
       title ? h('div', { class: 'day-line' }, h('b', {}, title), completed ? h('span', { class: 'ok' }, ' · completed ✓') : date < PT.today() ? h('span', { class: 'red' }, ' · not completed') : null)
         : h('div', { class: 'day-line muted' }, 'Rest day'),
       planLine(date) ? h('div', { class: 'day-line small muted' }, planLine(date)) : null,
-      evs.length ? h('div', { class: 'day-line small' }, evs.length + (evs.length === 1 ? ' event · ' : ' events · ') + PT.eventsText(evs[0])) : null,
-      reg.on.length ? h('div', { class: 'day-line small' }, reg.on.map(r => r.title + (((PT.state.plan[date] || {}).reg || {})[r.id] === 'done' ? ' ✓' : '')).join(' · ')) : null,
-      reg.sug.length ? h('div', { class: 'day-line small muted' }, '+ ' + reg.sug.length + (reg.sug.length === 1 ? ' suggestion' : ' suggestions') + ': ' + reg.sug.map(r => r.title).join(', ')) : null,
+      agOn.length ? h('div', { class: 'day-line small' }, agOn.map(x => PT.agendaText(x) + (x.done ? ' ✓' : '')).join(' · ')) : null,
+      agSug.length ? h('div', { class: 'day-line small muted' }, '+ ' + agSug.length + ' suggested: ' + agSug.map(x => x.title).join(', ')) : null,
       rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text))),
     h('div', { class: 'daycard-more' },
       isToday && exs.length ? [h('div', { class: 'f' }, 'Training'), exs.map(en => h('div', { class: 'today-ex' }, h('span', {}, en.name), h('span', { class: 'muted' }, amtOf(en)))), h('div', { style: { height: '8px' } })] : null,
-      evs.length ? [h('div', { class: 'f' }, 'Calendar'), evs.map(ev => h('div', { class: 'day-line small' }, PT.eventsText(ev)))] : h('div', { class: 'small muted' }, 'No calendar events.'),
+      agOn.length ? [h('div', { class: 'f' }, 'Calendar · day plan'), agOn.map(x => h('div', { class: 'day-line small' + (x.done ? ' muted' : '') }, PT.agendaText(x) + (x.done ? ' ✓' : '')))] : h('div', { class: 'small muted' }, 'Nothing in the calendar.'),
       t && t.kcal ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Macro goals'), h('div', { class: 'day-line small' }, t.kcal + ' kcal · P ' + t.p + ' g · C ' + t.c + ' g · F ' + t.f + ' g')] : null,
       note ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Notes'), h('div', { class: 'day-line small' }, note.length > 90 ? note.slice(0, 90) + '…' : note)] : null,
       h('a', { class: 'btn small block', style: { marginTop: '10px' }, href: '#/plan/' + date }, isToday ? (exs.length && !completed ? 'Open today to log ›' : 'Open today ›') : 'Open ' + PT.dayName(date) + ' ›')));
@@ -190,7 +189,6 @@ function dayView(date) {
         } }, 'Save as a usual shift')))]));
 
   root.append(remindersCard(date) || '');
-  root.append((PT.regularBlock && PT.regularBlock(date)) || '');
   if (PT.dayCompleted(date)) root.append(h('div', { class: 'card', style: { borderColor: 'var(--ok)' } }, h('b', { class: 'ok' }, '✓ Day completed'), h('span', { class: 'small muted' }, ' · logged to Progress')));
   else if (date < PT.today() && PT.dayExs(date).length) root.append(h('div', { class: 'card reminder' }, h('b', { class: 'red' }, 'Not completed yet'), h('div', { class: 'small muted' }, 'Fill in what you did, then tap Complete day at the bottom of Training.')));
 
@@ -201,10 +199,11 @@ function dayView(date) {
   root.append(train);
 
   // calendar / day plan
-  const evs = day.events || [], ne = { title: '', start: '', end: '' };
-  root.append(PT.section('calendar', 'Calendar · day plan', evs.length ? evs.length + (evs.length === 1 ? ' event · ' : ' events · ') + PT.eventsText(evs[0]) : 'Nothing else on', [
-    evs.length ? evs.map(ev => h('div', { class: 'card row between' }, h('div', {}, PT.eventsText(ev)),
-      h('button', { class: 'btn danger small', onclick: () => { ensureDay(date).events = evs.filter(x => x.id !== ev.id); PT.save(); PT.render(); } }, 'Delete'))) : h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'No events. Import your calendar from the Plan tab, or add one here.'),
+  // calendar events and your regular schedule together, earliest first, each one tickable
+  const ne = { title: '', start: '', end: '' }, ag = PT.dayAgenda(date), agOn = ag.filter(x => !x.suggested), agSug = ag.filter(x => x.suggested);
+  root.append(PT.section('calendar', 'Calendar · day plan',
+    ag.length ? (agOn.length ? agOn.filter(x => x.done).length + ' of ' + agOn.length + ' done · ' + agOn.map(PT.agendaText).slice(0, 2).join(' · ') : 'Nothing added yet') + (agSug.length ? ' · +' + agSug.length + ' suggested' : '') : 'Nothing else on', [
+    PT.agendaList(date),
     h('div', { class: 'card' },
       PT.field('Add event', h('input', { placeholder: 'e.g. Physio, dinner with a friend', oninput: e => ne.title = e.target.value })),
       h('div', { class: 'grid2', style: { margin: '8px 0' } },
@@ -214,7 +213,8 @@ function dayView(date) {
         if (!ne.title.trim()) { PT.toast('Write what it is first'); return; }
         const d = ensureDay(date); d.events = (d.events || []).concat({ id: PT.uid(), title: ne.title.trim(), start: ne.start, end: ne.end });
         d.events.sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1); PT.save(); PT.render();
-      } }, 'Add event'))]));
+      } }, 'Add event')),
+    h('a', { class: 'small muted', href: '#/more/regular' }, 'Edit your regular schedule ›')]));
 
   // fuel: goals faded, you type what you actually had
   const fuelSum = h('div', { class: 'small muted' }, PT.fuelSummary(date));

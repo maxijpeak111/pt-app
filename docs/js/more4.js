@@ -29,6 +29,33 @@ function addRegular(date, r) {
   }
   PT.save();
 }
+/* ---------- the day's agenda: calendar events + regular items together, earliest first ----------
+   Each row can be ticked off. Suggested regular items show + Add / ✕ until you decide. Untimed things go last. */
+PT.dayAgenda = date => {
+  const day = PT.state.plan[date] || {};
+  const rows = (day.events || []).map(ev => ({ kind: 'event', id: ev.id, title: ev.title, time: ev.start || '', end: ev.end || '', done: !!ev.done, ev }));
+  PT.regularFor(date).forEach(r => { const st = regState(date, r); if (st !== 'skipped') rows.push({ kind: 'reg', id: r.id, title: r.title, time: r.time || '', done: st === 'done', suggested: !st, r }); });
+  return rows.sort((a, b) => (a.time || '99:99') < (b.time || '99:99') ? -1 : (a.time || '99:99') > (b.time || '99:99') ? 1 : 0);
+};
+PT.agendaText = x => (x.time ? x.time + (x.end ? '–' + x.end : '') + ' ' : '') + x.title;
+PT.agendaList = date => {
+  const rows = PT.dayAgenda(date);
+  if (!rows.length) return h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'Nothing on. Add an event below, or set up regular things in More → Regular schedule.');
+  return h('div', { class: 'card' }, rows.map(x => {
+    const label = h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), x.time ? h('div', { class: 'small muted' }, x.time + (x.end ? '–' + x.end : '')) : null);
+    if (x.suggested) return h('div', { class: 'checkrow suggested' }, h('span', { class: 'sug-dot' }, '+'), label,
+      h('button', { class: 'btn small', onclick: () => { addRegular(date, x.r); PT.toast('Added ' + x.title); PT.render(); } }, 'Add'),
+      h('button', { class: 'btn ghost small', 'aria-label': 'Not today', onclick: () => { setReg(date, x.r, 'skipped'); PT.save(); PT.render(); } }, '✕'));
+    const cb = h('input', { type: 'checkbox', checked: x.done });
+    cb.addEventListener('change', () => {
+      if (x.kind === 'event') x.ev.done = cb.checked; else setReg(date, x.r, cb.checked ? 'done' : 'added');
+      PT.save(); PT.render();
+    });
+    return h('label', { class: 'checkrow' + (x.done ? ' done' : '') }, cb, label,
+      x.kind === 'event' ? h('button', { class: 'btn ghost small', 'aria-label': 'Delete event', onclick: ev => { ev.preventDefault(); const d = PT.ensureDay(date); d.events = d.events.filter(e => e.id !== x.id); PT.save(); PT.render(); } }, '✕') : null);
+  }));
+};
+
 // The "Regular" card on a day: your automatic items to tick off, and suggestions you can add or dismiss.
 PT.regularBlock = date => {
   const items = PT.regularFor(date).filter(r => regState(date, r) !== 'skipped');
@@ -144,9 +171,19 @@ PT.moreViews.goals = function () {
       h('div', { class: 'sec-body' },
         a.intro ? h('p', { class: 'small', style: { marginTop: 0 } }, a.intro) : null,
         a.current ? h('div', { class: 'small muted', style: { marginBottom: '6px' } }, h('b', {}, 'Now: '), a.current) : null,
-        a.items.map(it => { const cb = h('input', { type: 'checkbox', checked: !!it.done }); cb.addEventListener('change', () => { it.done = cb.checked; PT.save(); PT.render(); });
-          return h('label', { class: 'checkrow' + (it.done ? ' done' : '') }, cb, h('div', { class: 'grow t' }, it.text),
-            h('button', { class: 'btn ghost small', 'aria-label': 'Remove', onclick: ev => { ev.preventDefault(); a.items = a.items.filter(x => x.id !== it.id); PT.save(); PT.render(); } }, '✕')); }),
+        a.items.map(it => {
+          const cb = h('input', { type: 'checkbox', checked: !!it.done }); cb.addEventListener('change', () => { it.done = cb.checked; PT.save(); PT.render(); });
+          // details: write out exactly what you're trying to do, why, and how
+          const more = h('div', { class: 'goal-detail', style: { display: goalOpen[it.id] ? '' : 'none' } },
+            h('textarea', { value: it.detail || '', placeholder: 'What exactly am I aiming for, why it matters, how I\'ll get there, what done looks like…', oninput: e => { it.detail = e.target.value; PT.save(); } }));
+          const toggle = h('button', { class: 'back small', style: { margin: '0 0 0 36px', color: 'var(--red2)' }, onclick: () => { goalOpen[it.id] = !goalOpen[it.id]; more.style.display = goalOpen[it.id] ? '' : 'none'; toggle.textContent = goalOpen[it.id] ? 'Hide details' : (it.detail ? 'Details ›' : '+ Add details'); } },
+            goalOpen[it.id] ? 'Hide details' : (it.detail ? 'Details ›' : '+ Add details'));
+          return h('div', { class: 'goal-item' },
+            h('label', { class: 'checkrow' + (it.done ? ' done' : ''), style: { borderBottom: 0, paddingBottom: '2px' } }, cb, h('div', { class: 'grow t' }, it.text),
+              h('button', { class: 'btn ghost small', 'aria-label': 'Remove', onclick: ev => { ev.preventDefault(); PT.confirm('Remove "' + it.text + '"?', 'Remove', () => { a.items = a.items.filter(x => x.id !== it.id); PT.save(); PT.render(); }); } }, '✕')),
+            it.detail && !goalOpen[it.id] ? h('div', { class: 'small muted', style: { margin: '0 0 2px 36px' } }, it.detail.length > 90 ? it.detail.slice(0, 90) + '…' : it.detail) : null,
+            toggle, more);
+        }),
         h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'nowrap' } },
           h('input', { placeholder: 'Add a goal', oninput: e => nt.v = e.target.value }),
           h('button', { class: 'btn small', onclick: () => { if (!nt.v.trim()) return; a.items.push({ id: PT.uid(), text: nt.v.trim(), done: false }); PT.save(); PT.render(); } }, 'Add')),
@@ -159,8 +196,7 @@ PT.moreViews.goals = function () {
   };
   return h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Goals'),
     areas.map(area),
-    h('button', { class: 'btn ghost block', onclick: () => editArea(null) }, '+ New goal area'),
-    h('a', { class: 'btn ghost block', style: { marginTop: '8px' }, href: '#/more/progress' }, 'Number trackers & history ›'));
+    h('button', { class: 'btn ghost block', onclick: () => editArea(null) }, '+ New goal area'));
 };
 function editArea(a) {
   const d = a ? Object.assign({}, a) : { id: PT.uid(), title: '', intro: '', current: '', items: [], later: '' };

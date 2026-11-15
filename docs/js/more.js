@@ -8,8 +8,8 @@ PT.views.more = function (parts) {
   const v = parts[1] && PT.moreViews[parts[1]];
   if (v) return v(parts);
   const groups = [
-    ['Plan', [['#/more/regular', 'Regular schedule'], ['#/more/goals', 'Goals']]],
-    ['Body', [['#/more/body', 'Body & macros'], ['#/more/photos', 'Progress photos'], ['#/more/progress', 'Trackers & history'], ['#/more/sleep', 'Sleep']]],
+    ['Plan', [['#/more/regular', 'Regular schedule'], ['#/more/goals', 'Goals'], ['#/more/progress', 'Number trackers']]],
+    ['Body', [['#/more/body', 'Body & macros'], ['#/more/photos', 'Progress photos'], ['#/more/sleep', 'Sleep']]],
     ['Mind', [['#/more/journal', 'Journal log'], ['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)']]],
     ['App', [['#/more/settings', 'Settings & backup']]]];
   return h('div', {}, h('h1', {}, 'More'), groups.map(([g, items]) => [h('h2', {}, g), h('div', { class: 'menu' }, items.map(([href, l]) => h('a', { href }, l, h('span', {}, '›'))))]));
@@ -133,7 +133,7 @@ function goalInfo(g) {
 }
 
 PT.moreViews.progress = function () {
-  const s = PT.state, root = h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Progress'), h('h2', {}, 'Goals'));
+  const s = PT.state, root = h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Number trackers'), h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Goals measured by a number (e.g. longest run, body weight): set a start and a target, update it as you go, and see how far along you are. Plus long-term charts from your logs.'), h('h2', {}, 'Number goals'));
   if (!s.goals.length) root.append(h('div', { class: 'empty' }, 'Set a goal with a start and target number, then update it as you improve. The app tells you if you’re on pace.'));
   s.goals.forEach(g => {
     const i = goalInfo(g);

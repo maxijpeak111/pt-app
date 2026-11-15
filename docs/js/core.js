@@ -261,7 +261,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 14;
+PT.APP_VERSION = 15;
 PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
@@ -367,17 +367,26 @@ PT.entryKm = (en, which) => { const x = en[which]; return x ? metres(x, en.kind,
 /* ---------- best and current per exercise (shown in the Exercise library) ---------- */
 // Strength: best = heaviest kg ever logged (or the best you typed in, if higher); current = your latest logged kg
 // (or the one you typed if nothing is logged yet). Cardio: your own 1–10 ability level.
+// Reps go with each weight: best = heaviest (more reps wins a tie), current = the latest.
 PT.exBests = lib => {
-  let best = 0, cur = 0; const nm = String(lib.name || '').toLowerCase();
+  let best = 0, bestReps = 0, cur = 0, curReps = 0; const nm = String(lib.name || '').toLowerCase();
   PT.state.logs.slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(l => (l.exercises || []).forEach(e => {
-    if ((e.exId === lib.id || String(e.name || '').toLowerCase() === nm) && e.kind === 'strength' && +e.kg) { best = Math.max(best, +e.kg); cur = +e.kg; }
+    if ((e.exId === lib.id || String(e.name || '').toLowerCase() === nm) && e.kind === 'strength' && +e.kg) {
+      if (+e.kg > best || (+e.kg === best && (+e.reps || 0) > bestReps)) { best = +e.kg; bestReps = +e.reps || 0; }
+      cur = +e.kg; curReps = +e.reps || 0;
+    }
   }));
   const m = lib.manual || {};
-  return { best: Math.max(best, +m.best || 0), cur: cur || +m.current || 0 };
+  if (+m.best > best || (+m.best === best && (+m.bestReps || 0) > bestReps)) { best = +m.best; bestReps = +m.bestReps || 0; }
+  if (!cur && +m.current) { cur = +m.current; curReps = +m.currentReps || 0; }
+  return { best, bestReps, cur, curReps };
 };
 PT.exStatsText = lib => {
   if (!lib) return '';
-  if ((lib.kind || 'strength') === 'strength') { const b = PT.exBests(lib); return b.best ? 'Best ' + b.best + ' kg' + (b.cur ? ' · Current ' + b.cur + ' kg' : '') : ''; }
+  if ((lib.kind || 'strength') === 'strength') {
+    const b = PT.exBests(lib), r = n => n ? ' × ' + n : '';
+    return b.best ? 'Best ' + b.best + ' kg' + r(b.bestReps) + (b.cur ? ' · Current ' + b.cur + ' kg' + r(b.curReps) : '') : '';
+  }
   return +lib.ability ? 'Ability ' + lib.ability + '/10' : '';
 };
 PT.dayLevel = date => { const xs = PT.dayExs(date); return xs.length ? Math.round(xs.reduce((a, e) => a + (+e.level || 7), 0) / xs.length) : 0; };
