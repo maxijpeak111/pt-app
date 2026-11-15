@@ -114,3 +114,26 @@ details.section .card input,details.section .card textarea,details.section .macr
 .day-line{font-size:15px;margin-top:3px}.day-line.rem{font-size:14px}.day-line.rem b{color:var(--red2)}
 .journal-text{min-height:320px;font-size:16px;line-height:1.5}
 .planned input{color:#8b8f97}
+/* plan page: today box and collapsible days */
+.today-box{padding:0;border:2px solid var(--red);overflow:hidden}
+.today-head{display:flex;justify-content:space-between;background:var(--red);color:#fff;font-weight:900;letter-spacing:.08em;padding:10px 14px;font-size:14px}
+.today-body{padding:12px 14px 14px}
+.today-ex{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:15px}
+.today-ex:last-of-type{border-bottom:0}
+.today-open{margin-top:12px;color:var(--red2);font-weight:800;text-align:right}
+details.daycard>summary{list-style:none;cursor:pointer;color:var(--text);font-size:16px;font-weight:400}
+details.daycard>summary::-webkit-details-marker{display:none}
+details.daycard{margin-top:0}
+details.daycard .chev::after{content:' ▸';color:var(--red2)}
+details.daycard[open] .chev::after{content:' ▾'}
+.daycard-more{border-top:1px solid var(--line);margin-top:10px;padding-top:10px}
+.daycard-more .f{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:2px}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pp-tile{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;cursor:pointer}
+.pp-img{display:block;width:100%;aspect-ratio:3/4;object-fit:cover;background:var(--panel2)}
+.pp-img.big{border-radius:10px;aspect-ratio:auto;max-height:70vh;object-fit:contain}
+.pp-empty{aspect-ratio:3/4;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);background:var(--panel2)}
+.pp-empty b{font-size:34px;color:var(--red2)}
+.pp-label{padding:8px 10px;font-weight:800;font-size:14px}
+.pp-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.pp-thumb{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;background:var(--panel2);display:flex;align-items:center;justify-content:center;color:var(--muted)}

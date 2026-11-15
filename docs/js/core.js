@@ -21,9 +21,9 @@ const KEY = 'pt.v1';
 function defaults() {
   return {
     v: 1, seeded: false,
-    settings: { minPct: 60, maxPct: 110, poolM: 18, shiftPresets: [], maxTargets: { kcal: '', p: '', c: '', f: '' }, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
+    settings: { minPct: 60, maxPct: 110, poolM: 18, photoDay: 0, shiftPresets: [], maxTargets: { kcal: '', p: '', c: '', f: '' }, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], routines: [], recoveryLog: {},
-    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
+    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, photos: {}, sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
 }
 function merge(d, o) {
@@ -261,7 +261,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 12;
+PT.APP_VERSION = 13;
 PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
@@ -337,6 +337,7 @@ PT.makeEntry = (x, extra) => {
     level: x.level || PT.lastLevel(lib || x) || 7, actual: null };
   const base = pickFields(x, kind);
   if (!PT.hasRange(lib) && Object.values(base).some(v => +v)) en.base = base;
+  if (x.plan) en.plan = pickFields(x.plan, kind);
   return Object.assign(en, extra || {});
 };
 // The most recent earlier time you logged this exercise: { date, ex } or null.
@@ -363,6 +364,22 @@ PT.daySessions = date => {
 };
 const metres = (x, kind, unit) => kind === 'laps' ? (+x.sets || 1) * (+x.laps || 0) * PT.pool() : unit === 'm' ? +x.distance || 0 : (+x.distance || 0) * 1000;
 PT.entryKm = (en, which) => { const x = en[which]; return x ? metres(x, en.kind, en.unit) / 1000 : 0; };
+/* ---------- best and current per exercise (shown in the Exercise library) ---------- */
+// Strength: best = heaviest kg ever logged (or the best you typed in, if higher); current = your latest logged kg
+// (or the one you typed if nothing is logged yet). Cardio: your own 1–10 ability level.
+PT.exBests = lib => {
+  let best = 0, cur = 0; const nm = String(lib.name || '').toLowerCase();
+  PT.state.logs.slice().sort((a, b) => a.date < b.date ? -1 : 1).forEach(l => (l.exercises || []).forEach(e => {
+    if ((e.exId === lib.id || String(e.name || '').toLowerCase() === nm) && e.kind === 'strength' && +e.kg) { best = Math.max(best, +e.kg); cur = +e.kg; }
+  }));
+  const m = lib.manual || {};
+  return { best: Math.max(best, +m.best || 0), cur: cur || +m.current || 0 };
+};
+PT.exStatsText = lib => {
+  if (!lib) return '';
+  if ((lib.kind || 'strength') === 'strength') { const b = PT.exBests(lib); return b.best ? 'Best ' + b.best + ' kg' + (b.cur ? ' · Current ' + b.cur + ' kg' : '') : ''; }
+  return +lib.ability ? 'Ability ' + lib.ability + '/10' : '';
+};
 PT.dayLevel = date => { const xs = PT.dayExs(date); return xs.length ? Math.round(xs.reduce((a, e) => a + (+e.level || 7), 0) / xs.length) : 0; };
 // Keep one log per training day, built from what you actually did. Progress charts read these logs.
 // A day counts as done only once you press "Complete day"; until then it is still the plan.

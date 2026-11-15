@@ -59,7 +59,7 @@ PT.rangeForm = function (box, lib, done, cancel) {
 
 /* ---------- folder browser: pick exercises or whole saved sessions ---------- */
 // onAdd(list of session-exercises), called each time something is added. The sheet stays open so you can stack.
-// opts.onStretch(stretchId, phase): if given, folders also show prep moves and stretches you can add.
+// opts.planForm: on a day, tapping an exercise opens its boxes to type the plan before adding it.
 PT.browseSheet = function (onAdd, opts) {
   opts = opts || {};
   const box = h('div', {});
@@ -84,7 +84,6 @@ PT.browseSheet = function (onAdd, opts) {
       const mine = PT.state.sessions.filter(s => s.id !== opts.skipId);
       return [
         !opts.noSessions ? h('div', { class: 'card tap folder', onclick: sessionsFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Session library'), h('span', { class: 'muted small' }, mine.length + ' ›'))) : null,
-        opts.onStretch ? h('div', { class: 'card tap folder', onclick: routinesFolder }, h('div', { class: 'row between' }, h('b', {}, '★ Recovery routines'), h('span', { class: 'muted small' }, PT.state.routines.length + ' ›'))) : null,
         PT.FOLDERS.map(([group, list]) => [h('h2', {}, group), h('div', { class: 'folders' }, list.map(([tag, label]) => {
           const n = PT.state.exercises.filter(e => PT.inFolder(e, tag)).length;
           return h('div', { class: 'folder-tile', onclick: () => folder(tag, group + ' › ' + label) }, h('b', {}, label), h('span', { class: 'small muted' }, n + ' exercises'));
@@ -96,41 +95,21 @@ PT.browseSheet = function (onAdd, opts) {
   }
 
   function exRow(lib, back, from) {
-    const set = PT.hasRange(lib);
+    const stats = PT.exStatsText(lib);
     return h('div', { class: 'card tap', onclick: () => choose(lib, back, from) },
       h('div', { class: 'row between' }, h('b', {}, lib.name), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '22px' } }, '+')),
-      set ? h('div', { class: 'small muted' }, PT.exText(PT.atLevel(lib, 1)) + '  →  ' + PT.exText(PT.atLevel(lib, 10))) : null);
+      stats ? h('div', { class: 'small muted' }, stats) : null);
   }
 
-  // Inside a folder: closed drop boxes (exercises, before, after) so you only open what you need.
-  const openBox = {};
-  function fold(key, title, count, kids) {
-    const det = h('details', { class: 'section sub', open: !!openBox[key] },
-      h('summary', {}, h('div', { class: 'grow' }, h('div', { class: 'sec-title' }, title)), h('span', { class: 'muted small' }, String(count)), h('span', { class: 'chev' })),
-      h('div', { class: 'sec-body' }, kids));
-    det.addEventListener('toggle', () => { openBox[key] = det.open; });
-    return det;
-  }
+  // A folder opens straight to its exercises.
   function folder(tag, title) {
-    const [group, from] = title.split(' › ');
+    const from = title.split(' › ')[1];
     const back = () => folder(tag, title);
-    // strength folders show strength moves only (a swim works the shoulders, but it lives in Swim)
     const rows = PT.state.exercises.filter(e => PT.inFolder(e, tag)).sort((a, b) => a.name.localeCompare(b.name));
-    const exKids = [rows.length ? rows.map(e => exRow(e, back, from)) : h('div', { class: 'empty' }, 'Nothing here yet.')];
-    const head = [h('button', { class: 'back', onclick: home }, '‹ Folders'),
+    PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'),
       h('div', { class: 'row between', style: { marginTop: '4px', flexWrap: 'nowrap' } }, h('h2', { style: { margin: '10px 0' } }, from || title),
-        h('button', { class: 'btn ghost small', onclick: () => newEx(tag, back, from) }, '+ New exercise')), addedLine()];
-    if (!opts.onStretch) { PT.fill(box, head, exKids, done); return; }
-    PT.fill(box, head,
-      fold(tag + ':ex', group === 'Strength' ? 'Strength' : group === 'Combat' ? 'Rounds' : 'Cardio', rows.length, exKids),
-      PT.PHASES.map(([ph]) => {
-        const list = PT.allStretches().filter(x => PT.phaseOf(x) === ph && x.tags.includes(tag));
-        return fold(tag + ':' + ph, ph === 'before' ? 'Before · warm-up' : 'After · stretches', list.length, [
-          list.map(st => h('div', { class: 'card tap', onclick: () => { opts.onStretch(st.id, ph); added++; PT.toast('Added ' + st.name + ' to ' + (ph === 'before' ? 'Before' : 'After')); back(); } },
-            h('div', { class: 'row between', style: { flexWrap: 'nowrap' } }, h('div', {}, h('b', {}, st.name + (st.own ? ' ★' : '')), h('div', { class: 'small muted' }, st.hold)), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '22px' } }, '+')))),
-          h('button', { class: 'btn ghost block', onclick: () => PT.stretchForm(box, [tag], ph, st => { opts.onStretch(st.id, PT.phaseOf(st)); added++; PT.toast('Saved and added ' + st.name); back(); }, back) }, '+ New ' + (ph === 'before' ? 'warm-up move' : 'stretch') + ' in this folder')]);
-      }),
-      done);
+        h('button', { class: 'btn ghost small', onclick: () => newEx(tag, back, from) }, '+ New exercise')), addedLine(),
+      rows.length ? rows.map(e => exRow(e, back, from)) : h('div', { class: 'empty' }, 'Nothing here yet.'), done);
   }
 
   // New exercise: name it, say how it's measured, pick a folder if there isn't one yet, and it's added straight away.
@@ -157,21 +136,34 @@ PT.browseSheet = function (onAdd, opts) {
 
   function choose(lib, back, from) {
     if (!from) { const t = (lib.muscles || [])[0]; from = t ? PT.tagLabel(t) : lib.name; }
-    // One tap adds it. The level starts where you last had it (or 7) and can be changed afterwards.
+    if (opts.planForm) { planForm(lib, back, from); return; }
+    // session builder: one tap adds it
     const lv = PT.lastLevel(lib) || 7;
     onAdd([{ id: PT.uid(), exId: lib.id, name: lib.name, kind: lib.kind || 'strength', level: lv }], null, from);
     added++; PT.toast('Added ' + lib.name); back();
   }
 
-  // Saved recovery routines: one tap drops all their moves into the day's Before or After box.
-  function routinesFolder() {
-    const list = PT.state.routines.filter(r => r.items.length);
-    PT.fill(box, h('button', { class: 'back', onclick: home }, '‹ Folders'), h('h2', { style: { marginTop: '4px' } }, 'Recovery routines'), addedLine(),
-      h('p', { class: 'small muted' }, list.length ? 'Tap one to add all its moves to today.' : 'No routines yet. Build them in Library → Recovery library.'),
-      list.map(r => h('div', { class: 'card tap', onclick: () => {
-        r.items.forEach(id => opts.onStretch(id, r.phase)); added += r.items.length; PT.toast('Added ' + (r.name || 'routine') + ' to ' + (r.phase === 'before' ? 'Before' : 'After')); routinesFolder();
-      } }, h('div', { class: 'row between' }, h('b', {}, r.name || 'Untitled routine'), h('span', { class: 'pill' }, r.phase === 'before' ? 'Before' : 'After')),
-        h('div', { class: 'small muted' }, r.items.map(id => (PT.stretchById(id) || {}).name).filter(Boolean).join(' · ')))), done);
+  // On a day: tapping an exercise goes straight to its boxes (sets × laps, distance, sets × reps × kg…).
+  // Faded numbers are what you did last time; leave it blank to fill in on the day.
+  function planForm(lib, back, from) {
+    const kind = lib.kind || 'strength', unit = lib.unit || 'km', p = {};
+    const last = PT.lastDone({ exId: lib.id, name: lib.name }, '9999-12-31'), ph = last ? last.ex : {};
+    const num = (k, label, step) => PT.field(label, PT.numInput('', v => p[k] = v, +ph[k] ? String(ph[k]) : '', step));
+    const dur = (k, label, def) => PT.field(label, PT.durInput(0, v => p[k] = v, +ph[k] ? PT.fmtDur(ph[k]) : def));
+    const fields = kind === 'laps' ? h('div', { class: 'grid3' }, num('sets', 'Sets', '1'), num('laps', 'Laps (' + PT.pool() + ' m)', '1'), dur('time', 'Time', 'm:ss'))
+      : kind === 'cardio' ? h('div', { class: 'grid2' }, num('distance', 'Distance (' + unit + ')'), dur('time', 'Time', 'h:mm:ss'))
+      : kind === 'time' ? h('div', { class: 'grid2' }, num('rounds', 'Rounds', '1'), dur('time', 'Time per round', 'm:ss'))
+      : h('div', { class: 'grid3' }, num('sets', 'Sets', '1'), num('reps', 'Reps', '1'), num('kg', 'Kg', '0.5'));
+    const stats = PT.exStatsText(lib);
+    PT.fill(box, h('button', { class: 'back', onclick: back }, '‹ Back'),
+      h('h2', { style: { marginTop: '4px' } }, lib.name),
+      stats ? h('div', { class: 'small muted', style: { marginBottom: '6px' } }, stats) : null,
+      h('label', { class: 'f' }, 'Planned'), fields,
+      h('div', { class: 'small muted', style: { marginTop: '6px' } }, last ? 'Faded = last time (' + PT.niceDate(last.date) + '). ' : '', 'Leave blank to fill in later.'),
+      h('button', { class: 'btn block', style: { marginTop: '12px' }, onclick: () => {
+        onAdd([{ id: PT.uid(), exId: lib.id, name: lib.name, kind, level: PT.lastLevel(lib) || 7, plan: Object.assign({}, p) }], null, from);
+        added++; PT.toast('Added ' + lib.name); back();
+      } }, 'Add to day'));
   }
 
   function sessionsFolder() {

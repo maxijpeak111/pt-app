@@ -31,7 +31,10 @@ function weekView() {
   return h('div', {},
     h('h1', {}, 'Plan'),
     PT.backupNudge ? PT.backupNudge() : null,
+    PT.photoNudge ? PT.photoNudge() : null,
     q ? h('div', { class: 'quote' }, '“' + q.text + '”', q.by ? h('small', {}, q.by) : null) : null,
+    todayBox(PT.today()),
+    h('h2', {}, 'Week'),
     h('div', { class: 'week-nav' },
       h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.addDays(anchor, -7); PT.render(); } }, '‹'),
       h('div', { class: 'week-title' }, PT.niceDate(days[0]) + ' – ' + PT.niceDate(days[6]),
@@ -44,19 +47,48 @@ function weekView() {
     h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => PT.importSheet() }, 'Import calendar'));
 }
 
-// One day in the week list, as plain lines: shift, training, reminders.
-function dayCard(date) {
-  const day = PT.state.plan[date] || {}, exs = day.exs || [];
-  const title = PT.dayTitle(date), completed = PT.dayCompleted(date);
-  const rems = PT.remindersFor(date);
-  return h('a', { class: 'card tap' + (date === PT.today() ? ' today' : ''), href: '#/plan/' + date },
-    h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date))),
-    h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
-    title ? h('div', { class: 'day-line' }, h('b', {}, title), completed ? h('span', { class: 'ok' }, ' · completed ✓') : date < PT.today() ? h('span', { class: 'red' }, ' · not completed') : null)
-      : h('div', { class: 'day-line muted' }, 'Rest day'),
-    planLine(date) ? h('div', { class: 'day-line small muted' }, planLine(date)) : null,
-    rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text)));
+// The first thing you see: today written out in full.
+function todayBox(date) {
+  const day = PT.state.plan[date] || {}, exs = day.exs || [], evs = day.events || [], t = PT.dayTargets ? PT.dayTargets(date) : null;
+  const rems = PT.remindersFor(date), completed = PT.dayCompleted(date);
+  const amtOf = en => { const x = completed && PT.hasActual(en) ? en.actual : PT.hasPlan(en) ? en.plan : null; return x ? PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, x)) : ''; };
+  return h('a', { class: 'card today-box', href: '#/plan/' + date },
+    h('div', { class: 'today-head' }, h('span', {}, '● TODAY'), h('span', {}, PT.niceDate(date))),
+    h('div', { class: 'today-body' },
+      h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
+      rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text)),
+      exs.length ? [h('div', { class: 'day-line', style: { marginTop: '8px' } }, h('b', {}, PT.dayTitle(date)), completed ? h('span', { class: 'ok' }, ' · completed ✓') : null),
+        exs.map(en => h('div', { class: 'today-ex' }, h('span', {}, en.name), h('span', { class: 'muted' }, amtOf(en))))]
+        : h('div', { class: 'day-line muted', style: { marginTop: '6px' } }, 'Rest day · nothing planned'),
+      evs.length ? h('div', { style: { marginTop: '8px' } }, h('div', { class: 'small muted' }, 'Calendar'), evs.map(ev => h('div', { class: 'day-line small' }, PT.eventsText(ev)))) : null,
+      t && t.kcal ? h('div', { class: 'day-line small muted', style: { marginTop: '8px' } }, 'Fuel goal ' + t.kcal + ' kcal · P ' + t.p + ' · C ' + t.c + ' · F ' + t.f) : null,
+      h('div', { class: 'today-open' }, completed ? 'Open today ›' : exs.length ? 'Open today to log ›' : 'Open today to plan ›')));
 }
+
+// One day in the week list: plain lines (shift, training, what's planned, reminders). Tap to open more
+// (calendar, macro goals, notes) and a button into the day.
+function dayCard(date) {
+  const day = PT.state.plan[date] || {}, exs = day.exs || [], evs = day.events || [];
+  const title = PT.dayTitle(date), completed = PT.dayCompleted(date), isToday = date === PT.today();
+  const rems = PT.remindersFor(date), t = PT.dayTargets ? PT.dayTargets(date) : null;
+  const note = (day.note || '').split('\n')[0];
+  const det = h('details', { class: 'card daycard' + (isToday ? ' today' : '') },
+    h('summary', {},
+      h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, isToday ? h('span', { class: 'red' }, '● ') : null, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date), h('span', { class: 'chev' }))),
+      h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
+      title ? h('div', { class: 'day-line' }, h('b', {}, title), completed ? h('span', { class: 'ok' }, ' · completed ✓') : date < PT.today() ? h('span', { class: 'red' }, ' · not completed') : null)
+        : h('div', { class: 'day-line muted' }, 'Rest day'),
+      planLine(date) ? h('div', { class: 'day-line small muted' }, planLine(date)) : null,
+      evs.length ? h('div', { class: 'day-line small' }, evs.length + (evs.length === 1 ? ' event · ' : ' events · ') + PT.eventsText(evs[0])) : null,
+      rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text))),
+    h('div', { class: 'daycard-more' },
+      evs.length ? [h('div', { class: 'f' }, 'Calendar'), evs.map(ev => h('div', { class: 'day-line small' }, PT.eventsText(ev)))] : h('div', { class: 'small muted' }, 'No calendar events.'),
+      t && t.kcal ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Macro goals'), h('div', { class: 'day-line small' }, t.kcal + ' kcal · P ' + t.p + ' g · C ' + t.c + ' g · F ' + t.f + ' g')] : null,
+      note ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Notes'), h('div', { class: 'day-line small' }, note.length > 90 ? note.slice(0, 90) + '…' : note)] : null,
+      h('a', { class: 'btn small block', style: { marginTop: '10px' }, href: '#/plan/' + date }, 'Open ' + PT.dayName(date) + ' ›')));
+  return det;
+}
+
 // Short "what's planned" line for the week list, e.g. "Treadmill run 5 km · Strength 4 exercises"; after logging "3/5 km".
 const amt = (en, x) => en.kind === 'laps' ? (+x.sets || 1) + '×' + (+x.laps || 0) + ' laps' : en.kind === 'cardio' ? (+x.distance || 0) + ' ' + (en.unit || 'km') : en.kind === 'time' ? (+x.rounds || 0) + ' rounds' : '';
 function planLine(date) {
@@ -271,7 +303,7 @@ function addExercises(date, redraw) {
     const d = ensureDay(date);
     list.forEach(x => d.exs.push(PT.makeEntry(x, fromSession ? { fromSession: fromSession.id } : null)));
     PT.save(); redraw();
-  }, { onStretch: (id, phase) => { PT.addDayStretch(date, id, phase); redraw(); } });
+  }, { planForm: true });
 }
 
 // One exercise: the target (a guide) and what you actually did (what counts).

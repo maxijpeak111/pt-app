@@ -36,12 +36,24 @@ function recDay(date) {
 
 // What a day's Before/After box holds: ones you picked first, then best matches (most matching folders first).
 // Only the first SHOW appear until you tap "Show more"; Progress counts those as planned.
+// Stretches you linked to an exercise in the Exercise library come first; the automatic best matches only fill in
+// for exercises on that day that have nothing linked for this phase.
+PT.linkedStretches = (lib, phase) => ((lib && lib.stretches) || {})[phase] || [];
 PT.stretchList = (date, tags, phase, withPicked) => {
   const picked = withPicked !== false ? PT.dayStretchIds(date, phase).map(PT.stretchById).filter(Boolean) : [];
-  const pickedIds = new Set(picked.map(x => x.id));
-  const score = x => x.tags.filter(t => tags.includes(t)).length;
-  const auto = PT.stretchesFor(tags, phase).filter(x => !pickedIds.has(x.id)).sort((a, b) => score(b) - score(a));
-  return { list: [...picked, ...auto], SHOW: Math.max(6, picked.length), pickedIds };
+  const exs = PT.dayExs(date), linkedIds = [], openTags = new Set();
+  exs.forEach(en => {
+    const lib = PT.libEx(en), ids = PT.linkedStretches(lib, phase);
+    if (ids.length) ids.forEach(id => { if (!linkedIds.includes(id)) linkedIds.push(id); });
+    else ((lib && lib.muscles) || []).forEach(t => openTags.add(t));
+  });
+  if (!exs.length) tags.forEach(t => openTags.add(t)); // e.g. areas picked by hand
+  const linked = linkedIds.map(PT.stretchById).filter(Boolean);
+  const fixed = [...picked, ...linked.filter(x => !picked.some(p => p.id === x.id))];
+  const pickedIds = new Set(picked.map(x => x.id)), fixedIds = new Set(fixed.map(x => x.id));
+  const ot = [...openTags], score = x => x.tags.filter(t => ot.includes(t)).length;
+  const auto = ot.length ? PT.stretchesFor(ot, phase).filter(x => !fixedIds.has(x.id)).sort((a, b) => score(b) - score(a)) : [];
+  return { list: [...fixed, ...auto], SHOW: Math.max(6, fixed.length), pickedIds };
 };
 // Checklist for one phase (before or after), saved per day. Ones you added yourself come first and can be removed.
 PT.stretchBlock = (date, tags, phase, withPicked) => {

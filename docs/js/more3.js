@@ -122,6 +122,8 @@ PT.moreViews.settings = function () {
       h('div', { class: 'grid2' }, PT.field('Intensity 1 = % of base', PT.numInput(s.minPct, v => { s.minPct = v; PT.save(); upd(); }, '60', '1')), PT.field('Intensity 10 = % of base', PT.numInput(s.maxPct, v => { s.maxPct = v; PT.save(); upd(); }, '110', '1'))), gap(8), prev),
     h('h2', {}, 'My usual shifts'),
     h('div', { class: 'card' }, usualShifts()),
+    h('h2', {}, 'Progress photos'),
+    h('div', { class: 'card' }, PT.field('Photo day (reminder on the Plan tab)', PT.photoDaySelect ? PT.photoDaySelect() : '')),
     h('h2', {}, 'Swimming'),
     h('div', { class: 'card' }, PT.field('Pool length (m) · swims are logged in laps of this', PT.numInput(s.poolM, v => { s.poolM = v; PT.save(); }, '18', '1'))),
     h('h2', {}, 'Body weight'),

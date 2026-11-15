@@ -85,6 +85,7 @@ function safeUrl(u) { u = (u || '').trim(); return (/^https?:\/\//i.test(u) || /
 // Exercise library: opens on the body-part / sport folders; tap one to see and add its exercises.
 const exCard = e => h('a', { class: 'card tap', href: '#/library/exercises/' + e.id },
   h('div', { class: 'row between' }, h('b', {}, e.name), e.link ? h('span', { class: 'pill done' }, 'media') : null),
+  PT.exStatsText(e) ? h('div', { class: 'small', style: { color: 'var(--text)' } }, PT.exStatsText(e)) : null,
   h('div', { class: 'small muted' }, (e.muscles || []).map(PT.tagLabel).join(', ') + (PT.hasRange(e) ? ' · min/max set' : '')));
 const newExercise = tag => {
   const e = { id: PT.uid(), name: '', muscles: tag ? [tag] : [], kind: tag ? PT.defaultKind(tag) : 'strength', unit: tag && PT.defaultKind(tag) === 'cardio' ? 'km' : '', notes: '', link: '' };
@@ -116,6 +117,52 @@ function exFolder(tag) {
     h('button', { class: 'btn block', style: { marginBottom: '12px' }, onclick: () => newExercise(none ? '' : tag) }, '+ New exercise in ' + label),
     rows.length ? rows.map(exCard) : h('div', { class: 'empty' }, 'Nothing in this folder yet.'));
 }
+// Best & current for strength (from completed days, or typed from before you used the app); ability 1–10 for cardio.
+function bestsCard(e) {
+  if ((e.kind || 'strength') === 'strength') {
+    const m = e.manual = e.manual || {}, b = PT.exBests(e);
+    return [h('h2', {}, 'Best & current'), h('div', { class: 'card' },
+      h('div', { class: 'row between' }, h('div', {}, h('div', { class: 'stat' }, b.best ? b.best + ' kg' : '–'), h('div', { class: 'small muted' }, 'Best')),
+        h('div', { style: { textAlign: 'right' } }, h('div', { class: 'stat' }, b.cur ? b.cur + ' kg' : '–'), h('div', { class: 'small muted' }, 'Current'))),
+      h('p', { class: 'small muted' }, 'Worked out from your completed days. Lifted more before using the app? Type it here; the higher number wins.'),
+      h('div', { class: 'grid2' }, PT.field('My best (kg)', PT.numInput(m.best, v => { m.best = v; PT.save(); }, '', '0.5')), PT.field('Current (kg)', PT.numInput(m.current, v => { m.current = v; PT.save(); }, '', '0.5'))))];
+  }
+  const lv = +e.ability || 0;
+  return [h('h2', {}, 'Ability level'), h('div', { class: 'card' },
+    h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Where you are at with this right now, 1 (just starting) to 10 (your best ever). Update it as you improve.'),
+    (() => { const sg = PT.seg([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => [n, String(n)]), lv, v => { e.ability = v; PT.save(); }); sg.classList.add('tight'); return sg; })())];
+}
+// Stretches that belong with this exercise: whenever it's on a day, they go into that day's Before / After boxes.
+function linkedCard(e) {
+  e.stretches = e.stretches || { before: [], after: [] };
+  const box = h('div', {});
+  const pick = ph => {
+    const body = h('div', {}); const sh = PT.sheet(ph === 'before' ? 'Warm-up for ' + e.name : 'Stretches for ' + e.name, body);
+    const list = e.stretches[ph] = e.stretches[ph] || [];
+    const draw = () => PT.fill(body,
+      PT.state.routines.filter(r => r.phase === ph && r.items.length).length ? [h('b', {}, 'Your routines'), PT.state.routines.filter(r => r.phase === ph && r.items.length).map(r => h('div', { class: 'card tap', onclick: () => { r.items.forEach(id => { if (!list.includes(id)) list.push(id); }); PT.save(); draw(); drawBox(); } },
+        h('div', { class: 'row between' }, h('b', {}, r.name || 'Untitled routine'), h('span', { class: 'red', style: { fontWeight: 800 } }, '+ all')))), h('div', { style: { height: '8px' } })] : null,
+      PT.TAGS.map(([tag, label]) => {
+        const items = PT.allStretches().filter(x => PT.phaseOf(x) === ph && x.tags.includes(tag));
+        if (!items.length) return null;
+        const det = h('details', { class: 'section sub', open: (e.muscles || []).includes(tag) }, h('summary', {}, h('div', { class: 'grow' }, h('div', { class: 'sec-title' }, label)), h('span', { class: 'muted small' }, String(items.length)), h('span', { class: 'chev' })),
+          h('div', { class: 'sec-body' }, items.map(st => h('div', { class: 'card tap', onclick: () => { const i = list.indexOf(st.id); if (i >= 0) list.splice(i, 1); else list.push(st.id); PT.save(); draw(); drawBox(); } },
+            h('div', { class: 'row between' }, h('b', {}, st.name), h('span', { class: list.includes(st.id) ? 'ok' : 'red', style: { fontWeight: 800, fontSize: '20px' } }, list.includes(st.id) ? '✓' : '+'))))));
+        return det;
+      }),
+      h('button', { class: 'btn block', onclick: () => sh.close() }, 'Done'));
+    draw();
+  };
+  const drawBox = () => PT.fill(box, PT.PHASES.map(([ph, label]) => {
+    const ids = e.stretches[ph] || [];
+    return h('div', { class: 'card' },
+      h('div', { class: 'row between' }, h('b', {}, label), h('button', { class: 'btn ghost small', onclick: () => pick(ph) }, ids.length ? 'Edit' : '+ Link')),
+      h('div', { class: 'small muted', style: { marginTop: '4px' } }, ids.length ? ids.map(id => (PT.stretchById(id) || {}).name).filter(Boolean).join(' · ') : 'Nothing linked: the app picks matching ones automatically.'));
+  }));
+  drawBox();
+  return [h('h2', {}, 'Linked stretches'), h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Whenever this exercise is on a day, these go into that day\'s Before and After boxes.'), box];
+}
+
 function exDetail(id) {
   const s = PT.state, e = s.exercises.find(x => x.id === id);
   if (!e) return h('div', {}, PT.back('#/library/exercises', 'Exercise library'), h('div', { class: 'empty' }, 'Not found.'));
@@ -131,6 +178,8 @@ function exDetail(id) {
   return h('div', {}, PT.back('#/library/exercises', 'Exercise library'), h('h1', {}, e.name || 'New exercise'),
     PT.field('Name', h('input', { value: e.name, oninput: ev => e.name = ev.target.value, onchange: () => PT.save() })), gap(10),
     h('label', { class: 'f' }, 'Folders (muscles / sport)'), PT.chips(PT.TAGS, e.muscles, () => PT.save()), gap(10),
+    bestsCard(e),
+    linkedCard(e),
     h('h2', {}, 'Your range'),
     h('div', { class: 'card' },
       PT.hasRange(e) ? [h('div', {}, h('span', { class: 'muted small' }, 'Level 1  '), PT.exText(PT.atLevel(e, 1))), h('div', {}, h('span', { class: 'muted small' }, 'Level 5  '), PT.exText(PT.atLevel(e, 5))), h('div', {}, h('span', { class: 'red small' }, 'Level 10  '), PT.exText(PT.atLevel(e, 10)))]
