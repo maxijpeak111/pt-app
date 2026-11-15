@@ -23,7 +23,7 @@ function defaults() {
     v: 1, seeded: false,
     settings: { minPct: 60, maxPct: 110, poolM: 18, photoDay: 0, heightCm: '', age: '', bodyFat: '', shiftPresets: [], maxTargets: { kcal: '', p: '', c: '', f: '' }, bodyKg: '', targets: { kcal: '', p: '', c: '', f: '' }, hardKcal: '', ownOnly: false },
     sessions: [], plan: {}, logs: [], goals: [], customStretches: [], routines: [], recoveryLog: {},
-    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, journalLog: {}, journalDraft: '', photos: {}, regular: [], goalAreas: [], sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
+    foods: [], meals: [], foodLog: {}, fuelActual: {}, journal: {}, journalLog: {}, journalDraft: '', photos: {}, regular: [], weekly: [], weeklyLog: {}, goalAreas: [], sleep: {}, mind: {}, exercises: [], quotes: [], principles: ''
   };
 }
 function merge(d, o) {
@@ -44,7 +44,7 @@ PT.save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(PT.state)); return true; }
   catch (e) { alert('Could not save. Storage may be full or blocked in this browser.'); return false; }
 };
-PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); if (PT.migrate6) PT.migrate6(); if (PT.migrate7) PT.migrate7(); };
+PT.replaceState = obj => { PT.state = merge(defaults(), obj); PT.save(); if (PT.migrate) PT.migrate(); if (PT.migrate3) PT.migrate3(); if (PT.migrate4) PT.migrate4(); if (PT.migrate5) PT.migrate5(); if (PT.migrate6) PT.migrate6(); if (PT.migrate7) PT.migrate7(); if (PT.migrate8) PT.migrate8(); };
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
 
 /* ---------- tiny DOM helper (text is always inserted as text, never HTML) ---------- */
@@ -72,15 +72,18 @@ const h = PT.h;
 PT.fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false).map(k => k.nodeType ? k : document.createTextNode(String(k))));
 
 /* ---------- sheets, toasts ---------- */
+// Sheets stack: opening one on top of another (e.g. the food picker over the meal builder) keeps the one
+// underneath; closing removes only the top one.
 PT.sheet = function (title, content) {
   const root = document.getElementById('modal');
-  const close = () => { root.replaceChildren(); document.body.classList.remove('noscroll'); };
-  root.replaceChildren(
+  const layer = h('div', { class: 'sheet-layer' });
+  const close = () => { layer.remove(); if (!root.children.length) document.body.classList.remove('noscroll'); };
+  layer.append(
     h('div', { class: 'backdrop', onclick: close }),
     h('div', { class: 'sheet' },
       h('div', { class: 'sheet-head' }, h('h3', {}, title), h('button', { class: 'x', onclick: close, 'aria-label': 'Close' }, '✕')),
-      h('div', { class: 'sheet-body' }, content))
-  );
+      h('div', { class: 'sheet-body' }, content)));
+  root.append(layer);
   document.body.classList.add('noscroll');
   return { close };
 };
@@ -261,7 +264,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 15;
+PT.APP_VERSION = 16;
 PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
@@ -622,6 +625,19 @@ PT.migrate7 = function () {
   st.v = 7; PT.save();
 };
 PT.migrate7();
+
+/* v8: the old Number trackers page is gone; its goals become items (with number targets) in a "Number goals" area. */
+PT.migrate8 = function () {
+  const st = PT.state; if ((st.v || 1) >= 8) return;
+  if ((st.goals || []).length) {
+    st.goalAreas = st.goalAreas || [];
+    st.goalAreas.push({ id: PT.uid(), title: 'Number goals', intro: 'Moved from the old Number trackers page.', current: '', later: '',
+      items: st.goals.map(g => ({ id: PT.uid(), text: g.title + (g.deadline ? ' (by ' + g.deadline + ')' : ''), done: false,
+        target: { start: g.start, target: g.target, unit: g.unit, now: (g.history || []).length ? g.history[g.history.length - 1].value : g.start } })) });
+  }
+  st.v = 8; PT.save();
+};
+PT.migrate8();
 
 /* ---------- daily quote (only from quotes you add yourself) ---------- */
 PT.todayQuote = () => {

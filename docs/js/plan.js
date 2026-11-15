@@ -38,6 +38,7 @@ function weekView() {
       h('div', { class: 'week-title' }, PT.niceDate(days[0]) + ' – ' + PT.niceDate(days[6]),
         h('div', { class: 'small muted' }, planned ? trained + ' of ' + planned + ' training days completed' : 'Nothing planned yet')),
       h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.addDays(anchor, 7); PT.render(); } }, '›')),
+    PT.weeklyCard ? PT.weeklyCard(anchor) : null,
     days.map(dayCard),
     h('div', { class: 'row', style: { marginTop: '8px' } },
       h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.weekStart(PT.today()); PT.render(); } }, 'This week'),

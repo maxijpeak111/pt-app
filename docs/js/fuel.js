@@ -6,6 +6,80 @@ const g0 = n => Math.round(n);
 const gap = px => h('div', { style: { height: px + 'px' } });
 
 PT.FOOD_GROUPS = [['protein', 'Protein'], ['carbs', 'Carbs'], ['veg', 'Veg & fruit'], ['fats', 'Fats & sauces'], ['snacks', 'Snacks'], ['drinks', 'Drinks'], ['other', 'Other']];
+/* ---------- built-in food list: typical values per usual portion (check your own labels) ----------
+   Generic items use standard cooked/raw values (UK labels, USDA/McCance & Widdowson-style typical figures).
+   Branded items use their UK label values (Nov 2026). Picking one copies it into My foods, where you can edit it. */
+const F = (name, group, portion, g, kcal, p, c, f) => ({ name, group, portion, portionG: g, kcal, p, c, f });
+PT.FOOD_DB = [
+  F('Chicken breast (cooked)', 'protein', '1 breast', 150, 248, 46.5, 0, 5.4),
+  F('Beef mince 5% fat (raw)', 'protein', '1 serving', 125, 155, 26.8, 0, 5.6),
+  F('Salmon fillet (raw)', 'protein', '1 fillet', 130, 270, 26.5, 0, 17.4),
+  F('White fish / cod (cooked)', 'protein', '1 fillet', 150, 158, 34.5, 0, 1.4),
+  F('Prawns (cooked)', 'protein', '1 serving', 100, 99, 24, 0.2, 0.3),
+  F('Beef burger, quarter pounder (grilled)', 'protein', '1 burger', 85, 250, 20, 2, 18),
+  F('Egg (large)', 'protein', '1 egg', 50, 72, 6.3, 0.4, 4.8),
+  F('Whey protein', 'protein', '1 scoop', 30, 120, 24, 2.5, 1.5),
+  F('Greek yoghurt 0% fat', 'protein', '1 pot', 150, 86, 15, 5.4, 0.6),
+  F('White rice (cooked)', 'carbs', '1 serving', 200, 260, 5.4, 56, 0.6),
+  F('Brown rice (cooked)', 'carbs', '1 serving', 200, 246, 5.4, 51, 2),
+  F('Pasta (dry weight)', 'carbs', '1 serving', 75, 270, 9.4, 54, 1.1),
+  F('Sweet potato (baked)', 'carbs', '1 medium', 200, 180, 4, 41.4, 0.4),
+  F('Potatoes (boiled)', 'carbs', '1 serving', 200, 154, 3.6, 34, 0.2),
+  F('Quaker porridge oats (dry)', 'carbs', '1 serving', 40, 150, 4.4, 24, 3.2),
+  F('New York Bakery Co sesame bagel', 'carbs', '1 bagel', 90, 241, 9.6, 43, 2.5),
+  F('Wholemeal bread', 'carbs', '1 slice', 40, 94, 4, 16, 1.2),
+  F('Tortilla wrap', 'carbs', '1 wrap', 62, 190, 5.5, 32, 4.5),
+  F('Burger bun (white)', 'carbs', '1 bun', 60, 160, 5.5, 29, 2.5),
+  F('Granola', 'carbs', '1 bowl', 45, 203, 4, 27, 8),
+  F('Mixed veg (frozen, cooked)', 'veg', '1 serving', 80, 40, 2.3, 5.9, 0.6),
+  F('Peas (frozen, cooked)', 'veg', '1 serving', 80, 55, 4.8, 7.8, 0.7),
+  F('Broccoli (cooked)', 'veg', '1 serving', 80, 28, 1.9, 5.6, 0.3),
+  F('Banana', 'veg', '1 medium', 118, 105, 1.3, 27, 0.4),
+  F('Strawberries', 'veg', '1 handful', 150, 48, 1, 11.5, 0.5),
+  F('Blueberries', 'veg', '1 handful', 80, 46, 0.6, 11.6, 0.3),
+  F('Raspberries', 'veg', '1 handful', 80, 42, 1, 9.5, 0.5),
+  F('Frozen mixed berries', 'veg', '1 serving', 100, 50, 1, 10, 0.3),
+  F('Mango', 'veg', '1 serving', 100, 60, 0.8, 15, 0.4),
+  F('Pineapple', 'veg', '1 serving', 100, 50, 0.5, 13, 0.1),
+  F('Apple', 'veg', '1 medium', 182, 95, 0.5, 25, 0.3),
+  F('Orange', 'veg', '1 medium', 131, 62, 1.2, 15.4, 0.2),
+  F('Olive oil', 'fats', '1 tbsp', 14, 124, 0, 0, 14),
+  F('Heinz Truffle Mayo', 'fats', '1 tbsp', 15, 97, 0.1, 0.6, 10.5),
+  F('Sweet chilli sauce', 'fats', '1 tbsp', 15, 32, 0.1, 7.7, 0),
+  F('Honey', 'fats', '1 tbsp', 21, 64, 0.1, 17.3, 0),
+  F('Dark chocolate 70%', 'snacks', '4 squares', 20, 120, 1.6, 9.2, 8.6),
+  F('Nature Valley Crunchy Oats & Honey', 'snacks', '1 pack (2 bars)', 42, 190, 3.4, 29, 7),
+  F('Kellogg\'s Rice Krispies Squares', 'snacks', '1 bar', 28, 119, 0.8, 21, 3.4),
+  F('Semi-skimmed milk', 'drinks', '1 glass', 250, 118, 8.8, 12, 4.3)
+];
+// One picker for every place you add a food: your foods first, then the built-in list, or make a new one.
+// onPick(food) gets a food that is in My foods (a built-in one is copied in first).
+PT.pickFood = function (onPick, title) {
+  const box = h('div', {}); const sh = PT.sheet(title || 'Add a food', box);
+  let q = '';
+  const mine = () => PT.state.foods;
+  const take = f => { sh.close(); onPick(f); };
+  const row = (f, own) => h('div', { class: 'card tap', onclick: () => {
+    if (own) return take(f);
+    const copy = Object.assign({ id: PT.uid() }, f); PT.state.foods.push(copy); PT.save(); PT.toast('Saved to My foods'); take(copy);
+  } }, h('div', { class: 'row between', style: { flexWrap: 'nowrap' } }, h('b', {}, f.name), h('span', { class: 'red', style: { fontWeight: 800, fontSize: '20px' } }, '+')),
+    h('div', { class: 'small muted' }, portionText(f) + ' · ' + macroLine(f)));
+  const draw = () => {
+    const m = q ? mine().filter(f => f.name.toLowerCase().includes(q)) : mine();
+    const have = new Set(mine().map(f => f.name.toLowerCase()));
+    const db = PT.FOOD_DB.filter(f => !have.has(f.name.toLowerCase()) && (!q || f.name.toLowerCase().includes(q)));
+    PT.fill(list,
+      m.length ? [h('h2', { style: { marginTop: '8px' } }, 'My foods'), m.slice().sort((a, b) => a.name.localeCompare(b.name)).map(f => row(f, true))] : null,
+      db.length ? [h('h2', {}, 'Food list'), db.map(f => row(f, false))] : null,
+      !m.length && !db.length ? h('div', { class: 'empty' }, 'No match.') : null,
+      h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => foodForm(box, q ? { id: PT.uid(), name: search.value.trim(), group: 'other', portion: '', portionG: '', kcal: '', p: '', c: '', f: '' } : null, null, f => take(f), () => { PT.fill(box, search, list); }) }, '+ Create a new food' + (q ? ' "' + search.value.trim() + '"' : '')));
+  };
+  const search = h('input', { placeholder: 'Search foods (e.g. chicken, rice, peas)', oninput: e => { q = e.target.value.trim().toLowerCase(); draw(); } });
+  const list = h('div', {});
+  PT.fill(box, search, list); draw();
+  return sh;
+};
+
 PT.SLOTS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['snack', 'Snack'], ['pre', 'Pre-workout'], ['post', 'Post-workout']];
 const slotLabel = k => (PT.SLOTS.find(x => x[0] === k) || [0, 'Other'])[1];
 const macroLine = m => g0(m.kcal) + ' kcal · P ' + g0(m.p) + ' · C ' + g0(m.c) + ' · F ' + g0(m.f);
@@ -213,6 +287,7 @@ PT.addMealSheet = function (date) {
         h('div', { class: 'stat', id: 'plate-tot' }, macroLine(tot))) : h('div', { class: 'empty' }, 'Your plate is empty. Tap a usual meal or open a folder below.'),
       usual.length ? [h('h2', {}, 'Your usual meals'), h('div', {}, usual.map(m => h('span', { class: 'chip', onclick: () => { addToPlate(m.items); plateView(); } }, '+ ' + m.name)))] : null,
       h('h2', {}, 'Foods'),
+      h('button', { class: 'btn ghost block', style: { marginBottom: '10px' }, onclick: () => PT.pickFood(f => { addToPlate([{ foodId: f.id, qty: 1 }]); plateView(); }) }, 'Search foods & food list'),
       h('div', { class: 'folders' }, PT.FOOD_GROUPS.map(([k, l]) => {
         const n = PT.state.foods.filter(f => (f.group || 'other') === k).length;
         return h('div', { class: 'folder-tile', onclick: () => groupView(k, l) }, h('b', {}, l), h('span', { class: 'small muted' }, n + ' foods'));
@@ -297,7 +372,7 @@ function foodsView() {
   const open = f => { const box = h('div', {}); const sh = PT.sheet(f ? 'Edit food' : 'New food', box); foodForm(box, f, null, () => { sh.close(); PT.render(); }); };
   return h('div', {}, PT.back('#/library/meals', 'Meal library'), h('h1', {}, 'My foods'),
     h('p', { class: 'muted small' }, 'Each food remembers your usual portion and its macros, so you only type them once.'),
-    h('button', { class: 'btn block', onclick: () => open(null) }, '+ New food'),
+    h('div', { class: 'row' }, h('button', { class: 'btn grow', onclick: () => PT.pickFood(() => PT.render(), 'Add from the food list') }, '+ From food list'), h('button', { class: 'btn ghost grow', onclick: () => open(null) }, '+ New food')),
     PT.FOOD_GROUPS.map(([k, l]) => {
       const rows = PT.state.foods.filter(f => (f.group || 'other') === k).sort((a, b) => a.name.localeCompare(b.name));
       return rows.length ? [h('h2', {}, l), rows.map(f => h('div', { class: 'card tap', onclick: () => open(f) },
@@ -324,37 +399,38 @@ function mealsView() {
       h('b', {}, m.name), h('div', { class: 'small' }, m.items.map(it => { const f = food(it.foodId); return f ? f.name + (qtyText(f, it.qty) ? ' ' + qtyText(f, it.qty) : '') : null; }).filter(Boolean).join(' + ')),
       h('div', { class: 'small muted' }, macroLine(PT.mealTotals(m))))) : h('div', { class: 'empty' }, 'No usual meals yet.'));
 }
+// Build a meal (e.g. chicken, rice, peas): add each food with its amount; totals add up as you go.
 function mealForm(meal) {
-  if (!PT.state.foods.length) { PT.toast('Add some foods first'); location.hash = '#/library/foods'; return; }
-  const d = meal ? JSON.parse(JSON.stringify(meal)) : { id: PT.uid(), name: '', items: [{ foodId: PT.state.foods[0].id, qty: 1 }] };
-  const box = h('div', {}), tot = h('div', { class: 'stat' });
-  const refreshTotals = () => { tot.textContent = macroLine(PT.mealTotals(d)); };
+  const d = meal ? JSON.parse(JSON.stringify(meal)) : { id: PT.uid(), name: '', items: [] };
+  const box = h('div', {}), tot = h('div', { class: 'stat', style: { fontSize: '18px' } });
+  const refreshTotals = () => { tot.textContent = d.items.length ? macroLine(PT.mealTotals(d)) : 'Add foods to see the totals'; };
+  const autoName = () => d.items.map(it => (food(it.foodId) || {}).name).filter(Boolean).map(n => n.replace(/\s*\(.*\)$/, '')).join(', ');
+  let named = !!meal;
   function draw() {
     PT.fill(box,
-      PT.field('Meal name', h('input', { value: d.name, placeholder: 'e.g. Chicken, rice and veg', oninput: e => d.name = e.target.value })), gap(10),
-      d.items.map((it, i) => {
-        const f = food(it.foodId) || PT.state.foods[0];
+      PT.field('Meal name', h('input', { value: d.name, placeholder: 'e.g. Chicken, rice and peas', oninput: e => { d.name = e.target.value; named = true; } })), gap(10),
+      d.items.length ? h('div', { class: 'card' }, d.items.map((it, i) => {
+        const f = food(it.foodId); if (!f) return null;
         const q = +f.portionG ? PT.numInput(g0(it.qty * f.portionG), v => { it.qty = num(v) / f.portionG; refreshTotals(); }, 'g', '5') : PT.numInput(it.qty, v => { it.qty = num(v); refreshTotals(); }, 'portions', '0.5');
-        return h('div', { class: 'row', style: { marginBottom: '8px', flexWrap: 'nowrap' } },
-          h('select', { class: 'grow', onchange: e => { it.foodId = e.target.value; draw(); } }, PT.state.foods.map(x => h('option', { value: x.id, selected: x.id === it.foodId }, x.name))),
-          h('div', { style: { width: '86px', flex: 'none' } }, q),
-          h('button', { class: 'btn danger small', onclick: () => { d.items.splice(i, 1); draw(); } }, '✕'));
-      }),
-      h('div', { class: 'small muted' }, 'Amount is grams for foods with a gram portion, otherwise number of portions.'),
-      h('button', { class: 'btn ghost small', style: { marginTop: '8px' }, onclick: () => { d.items.push({ foodId: PT.state.foods[0].id, qty: 1 }); draw(); } }, '+ Add item'),
-      h('div', { class: 'card', style: { marginTop: '12px' } }, tot),
+        return h('div', { class: 'row between', style: { marginBottom: '8px', flexWrap: 'nowrap' } },
+          h('div', { class: 'grow' }, h('b', {}, f.name), h('div', { class: 'small muted' }, +f.portionG ? 'grams' : 'portions' + (f.portion ? ' (' + f.portion + ')' : ''))),
+          h('div', { style: { width: '90px', flex: 'none' } }, q),
+          h('button', { class: 'btn ghost small', 'aria-label': 'Remove', onclick: () => { d.items.splice(i, 1); if (!named) d.name = autoName(); draw(); } }, '✕'));
+      })) : h('div', { class: 'empty' }, 'No foods yet.'),
+      h('button', { class: 'btn ghost block', onclick: () => PT.pickFood(f => { d.items.push({ foodId: f.id, qty: 1 }); if (!named) d.name = autoName(); draw(); }) }, '+ Add food'),
+      h('div', { class: 'card', style: { marginTop: '12px' } }, h('div', { class: 'small muted' }, 'Meal total'), tot),
       h('button', { class: 'btn block', onclick: save }, 'Save meal'),
-      meal ? h('div', { style: { marginTop: '10px' } }, h('button', { class: 'btn danger block', onclick: () => PT.confirm('Delete "' + meal.name + '"?', 'Delete', () => { PT.state.meals = PT.state.meals.filter(x => x.id !== meal.id); PT.save(); PT.render(); }) }, 'Delete meal')) : null);
+      meal ? h('div', { style: { marginTop: '10px' } }, h('button', { class: 'btn danger block', onclick: () => PT.confirm('Delete "' + meal.name + '"?', 'Delete', () => { PT.state.meals = PT.state.meals.filter(x => x.id !== meal.id); PT.save(); sh.close(); PT.render(); }) }, 'Delete meal')) : null);
     refreshTotals();
   }
   function save() {
-    if (!d.name.trim()) { PT.toast('Name the meal'); return; }
-    if (!d.items.length) { PT.toast('Add at least one item'); return; }
+    if (!d.items.length) { PT.toast('Add at least one food'); return; }
+    if (!d.name.trim()) d.name = autoName();
     const out = { id: d.id, name: d.name.trim(), items: d.items.map(it => ({ foodId: it.foodId, qty: num(it.qty) })) };
     const i = PT.state.meals.findIndex(x => x.id === d.id); if (i >= 0) PT.state.meals[i] = out; else PT.state.meals.push(out);
-    PT.save(); sh.close(); PT.render();
+    PT.save(); sh.close(); PT.toast('Meal saved'); PT.render();
   }
-  const sh = PT.sheet(meal ? 'Edit usual meal' : 'New usual meal', box);
+  const sh = PT.sheet(meal ? 'Edit meal' : 'New meal', box);
   draw();
 }
 

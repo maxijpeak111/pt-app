@@ -8,7 +8,7 @@ PT.views.more = function (parts) {
   const v = parts[1] && PT.moreViews[parts[1]];
   if (v) return v(parts);
   const groups = [
-    ['Plan', [['#/more/regular', 'Regular schedule'], ['#/more/goals', 'Goals'], ['#/more/progress', 'Number trackers']]],
+    ['Plan', [['#/more/regular', 'Regular schedule'], ['#/more/goals', 'Goals']]],
     ['Body', [['#/more/body', 'Body & macros'], ['#/more/photos', 'Progress photos'], ['#/more/sleep', 'Sleep']]],
     ['Mind', [['#/more/journal', 'Journal log'], ['#/more/mind', 'Meditation'], ['#/more/code', 'Your code (motivation)']]],
     ['App', [['#/more/settings', 'Settings & backup']]]];
@@ -71,6 +71,19 @@ function bestStat(w) {
   wins.sort((a, b) => b[0] - a[0]);
   return wins[0] || null;
 }
+// Longer view: the last 8 weeks up to the week you're looking at (moved here from the old Number trackers page).
+function lastWeeks() {
+  const weeks = []; let w = pWeek;
+  for (let k = 0; k < 8; k++) { weeks.unshift(w); w = PT.addDays(w, -7); }
+  const st = weeks.map(ws => PT.weekStats(ws)), labels = weeks.map(x => String(PT.parse(x).getDate()));
+  const det = h('details', { class: 'section' },
+    h('summary', {}, h('div', { class: 'grow' }, h('div', { class: 'sec-title' }, 'Last 8 weeks'), h('div', { class: 'small muted' }, 'Sessions, run and swim distance week by week')), h('span', { class: 'chev' })),
+    h('div', { class: 'sec-body' },
+      h('b', {}, 'Sessions done'), PT.bars(st.map(x => x.sessions), labels),
+      h('b', { style: { display: 'block', marginTop: '12px' } }, 'Run distance (km)'), PT.bars(st.map(x => x.runKm), labels),
+      h('b', { style: { display: 'block', marginTop: '12px' } }, 'Swim distance (m)'), PT.bars(st.map(x => x.swimM), labels, 'Numbers under the bars are the date each week starts.')));
+  return [h('div', { style: { height: '10px' } }), det];
+}
 PT.views.progress = function (parts) {
   if (!pWeek) pWeek = PT.weekStart(PT.today());
   const w = PT.weekStats(pWeek), last = PT.weekStats(PT.addDays(pWeek, -7));
@@ -101,6 +114,7 @@ PT.views.progress = function (parts) {
       h('div', { class: 'dots' }, w.met.map((m, i) => h('i', { class: m === true ? 'met' : m === false ? 'miss' : '', title: w.days[i] }))),
       h('div', { class: 'chart-labels' }, w.days.map(d => h('span', {}, PT.dayName(d).slice(0, 2)))),
       h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Green = all macros within 10% of that day\'s goal · red outline = logged but off · grey = not logged')),
+    lastWeeks(),
     h('h2', {}, 'Strength bests'),
     lifts.length ? h('div', { class: 'card' }, lifts.map(n => {
       const now = heaviest(w.logs, n), prev = heaviest(last.logs, n), ever = heaviest(w.before, n);

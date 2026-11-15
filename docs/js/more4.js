@@ -34,27 +34,65 @@ function addRegular(date, r) {
 PT.dayAgenda = date => {
   const day = PT.state.plan[date] || {};
   const rows = (day.events || []).map(ev => ({ kind: 'event', id: ev.id, title: ev.title, time: ev.start || '', end: ev.end || '', done: !!ev.done, ev }));
-  PT.regularFor(date).forEach(r => { const st = regState(date, r); if (st !== 'skipped') rows.push({ kind: 'reg', id: r.id, title: r.title, time: r.time || '', done: st === 'done', suggested: !st, r }); });
+  const ov = day.regOv || {}; // "just this day" changes to a regular item
+  PT.regularFor(date).forEach(r => { const st = regState(date, r); const o = ov[r.id] || {};
+    if (st !== 'skipped') rows.push({ kind: 'reg', id: r.id, title: o.title || r.title, time: o.time != null ? o.time : (r.time || ''), done: st === 'done', suggested: !st, r, detail: o.detail != null ? o.detail : (r.detail || '') }); });
+  // once-a-week jobs you've put on this day
+  const ws = PT.weekStart(date), wl = (PT.state.weeklyLog || {})[ws] || {};
+  (PT.state.weekly || []).forEach(j => { const w = wl[j.id] || {}; if (w.day === date) rows.push({ kind: 'weekly', id: 'w' + j.id, title: j.title, time: '', done: !!w.done, job: j, detail: j.detail || '' }); });
   return rows.sort((a, b) => (a.time || '99:99') < (b.time || '99:99') ? -1 : (a.time || '99:99') > (b.time || '99:99') ? 1 : 0);
 };
 PT.agendaText = x => (x.time ? x.time + (x.end ? '–' + x.end : '') + ' ' : '') + x.title;
+// Each row: tick box, name (tap to open), and when open: the details, plus Edit.
+const agOpen = {};
 PT.agendaList = date => {
   const rows = PT.dayAgenda(date);
   if (!rows.length) return h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'Nothing on. Add an event below, or set up regular things in More → Regular schedule.');
   return h('div', { class: 'card' }, rows.map(x => {
-    const label = h('div', { class: 'grow' }, h('div', { class: 't' }, x.title), x.time ? h('div', { class: 'small muted' }, x.time + (x.end ? '–' + x.end : '')) : null);
-    if (x.suggested) return h('div', { class: 'checkrow suggested' }, h('span', { class: 'sug-dot' }, '+'), label,
-      h('button', { class: 'btn small', onclick: () => { addRegular(date, x.r); PT.toast('Added ' + x.title); PT.render(); } }, 'Add'),
-      h('button', { class: 'btn ghost small', 'aria-label': 'Not today', onclick: () => { setReg(date, x.r, 'skipped'); PT.save(); PT.render(); } }, '✕'));
-    const cb = h('input', { type: 'checkbox', checked: x.done });
-    cb.addEventListener('change', () => {
-      if (x.kind === 'event') x.ev.done = cb.checked; else setReg(date, x.r, cb.checked ? 'done' : 'added');
-      PT.save(); PT.render();
-    });
-    return h('label', { class: 'checkrow' + (x.done ? ' done' : '') }, cb, label,
-      x.kind === 'event' ? h('button', { class: 'btn ghost small', 'aria-label': 'Delete event', onclick: ev => { ev.preventDefault(); const d = PT.ensureDay(date); d.events = d.events.filter(e => e.id !== x.id); PT.save(); PT.render(); } }, '✕') : null);
+    const key = date + x.id, open = !!agOpen[key], detail = x.kind === 'event' ? (x.ev.detail || '') : x.detail;
+    const name = h('button', { class: 'ag-name', onclick: () => { agOpen[key] = !open; PT.render(); } },
+      h('div', { class: 't' }, x.title), h('div', { class: 'small muted' }, [x.time ? x.time + (x.end ? '–' + x.end : '') : '', detail && !open ? (x.time ? ' · ' : '') + 'details' : ''].join('')), h('span', { class: 'chev-s' }, open ? '▾' : '▸'));
+    const lead = x.suggested ? h('span', { class: 'sug-dot' }, '+') : (() => { const cb = h('input', { type: 'checkbox', checked: x.done });
+      cb.addEventListener('change', () => { if (x.kind === 'event') x.ev.done = cb.checked; else if (x.kind === 'weekly') PT.weeklyMark(PT.weekStart(date), x.job.id, { done: cb.checked }); else setReg(date, x.r, cb.checked ? 'done' : 'added'); PT.save(); PT.render(); }); return cb; })();
+    const actions = x.suggested ? [h('button', { class: 'btn small', onclick: () => { addRegular(date, x.r); PT.toast('Added ' + x.title); PT.render(); } }, 'Add'),
+      h('button', { class: 'btn ghost small', 'aria-label': 'Not today', onclick: () => { setReg(date, x.r, 'skipped'); PT.save(); PT.render(); } }, '✕')] : null;
+    return h('div', { class: 'ag-row' + (x.done ? ' done' : '') + (x.suggested ? ' suggested' : '') },
+      h('div', { class: 'ag-top' }, lead, name, actions),
+      open ? h('div', { class: 'ag-more' },
+        detail ? h('div', { class: 'small', style: { whiteSpace: 'pre-wrap', marginBottom: '8px' } }, detail) : h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'No details yet. Tap Edit to explain the plan.'),
+        h('div', { class: 'row' },
+          x.kind === 'weekly' ? h('a', { class: 'btn ghost small', href: '#/more/regular' }, 'Edit') : h('button', { class: 'btn ghost small', onclick: () => editAgenda(date, x) }, 'Edit'),
+          x.kind === 'event' ? h('button', { class: 'btn danger small', onclick: () => PT.confirm('Delete "' + x.title + '"?', 'Delete', () => { const d = PT.ensureDay(date); d.events = d.events.filter(e => e.id !== x.id); PT.save(); PT.render(); }) }, 'Delete')
+            : x.kind === 'weekly' ? h('button', { class: 'btn ghost small', onclick: () => { PT.weeklyMark(PT.weekStart(date), x.job.id, { day: '' }); PT.save(); PT.render(); } }, 'Not this day')
+            : !x.suggested ? h('button', { class: 'btn ghost small', onclick: () => { setReg(date, x.r, 'skipped'); PT.save(); PT.render(); } }, 'Remove from this day') : null)) : null);
   }));
 };
+// Edit a calendar item: name, times and a full explanation. Regular items ask: just this day, or every week?
+function editAgenda(date, x) {
+  const ev = x.kind === 'event' ? x.ev : null;
+  const d = { title: x.title, time: x.time || '', end: x.end || '', detail: ev ? (ev.detail || '') : x.detail };
+  const sh = PT.sheet('Edit', h('div', {},
+    PT.field('What', h('input', { value: d.title, oninput: e => d.title = e.target.value })), gap(8),
+    h('div', { class: 'grid2' },
+      PT.field('Start (optional)', h('input', { type: 'time', value: d.time, oninput: e => d.time = e.target.value })),
+      ev ? PT.field('End (optional)', h('input', { type: 'time', value: d.end, oninput: e => d.end = e.target.value })) : h('div')), gap(8),
+    PT.field('Details', h('textarea', { value: d.detail, placeholder: 'What exactly the plan is, why, how, anything to remember…', oninput: e => d.detail = e.target.value })), gap(12),
+    ev ? h('button', { class: 'btn block', onclick: () => {
+      if (!d.title.trim()) { PT.toast('Give it a name'); return; }
+      Object.assign(ev, { title: d.title.trim(), start: d.time, end: d.end, detail: d.detail });
+      const day = PT.ensureDay(date); day.events.sort((a, b) => (a.start || '99') < (b.start || '99') ? -1 : 1); PT.save(); sh.close(); PT.render();
+    } }, 'Save')
+      : [h('button', { class: 'btn block', onclick: () => {
+          if (!d.title.trim()) { PT.toast('Give it a name'); return; }
+          const day = PT.ensureDay(date); day.regOv = day.regOv || {}; day.regOv[x.id] = { title: d.title.trim(), time: d.time, detail: d.detail }; PT.save(); sh.close(); PT.render();
+        } }, 'Save for just this day'),
+        h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => {
+          if (!d.title.trim()) { PT.toast('Give it a name'); return; }
+          Object.assign(x.r, { title: d.title.trim(), time: d.time, detail: d.detail });
+          const day = PT.state.plan[date]; if (day && day.regOv) delete day.regOv[x.id]; PT.save(); sh.close(); PT.render();
+        } }, 'Save for every week')]));
+  return sh;
+}
 
 // The "Regular" card on a day: your automatic items to tick off, and suggestions you can add or dismiss.
 PT.regularBlock = date => {
@@ -76,16 +114,52 @@ PT.regularBlock = date => {
     sug.length ? [h('div', { class: 'small muted', style: { marginTop: '6px' } }, 'Suggested'), sug.map(row)] : null);
 };
 
+/* ---------- once-a-week jobs (any day): state.weekly = [{id,title,detail}];
+   state.weeklyLog[weekStart][id] = { done, day } — fresh each week ---------- */
+PT.weeklyMark = (ws, id, patch) => { const L = PT.state.weeklyLog = PT.state.weeklyLog || {}; L[ws] = L[ws] || {}; L[ws][id] = Object.assign({}, L[ws][id], patch); };
+PT.weeklyCard = ws => {
+  const jobs = PT.state.weekly || []; if (!jobs.length) return null;
+  const wl = (PT.state.weeklyLog || {})[ws] || {}, done = jobs.filter(j => (wl[j.id] || {}).done).length;
+  const days = [0, 1, 2, 3, 4, 5, 6].map(i => PT.addDays(ws, i));
+  return h('div', { class: 'card week-jobs' },
+    h('div', { class: 'row between' }, h('b', {}, 'This week · to do once'), h('span', { class: 'small muted' }, done + ' of ' + jobs.length + ' done')),
+    jobs.map(j => {
+      const w = wl[j.id] || {};
+      const cb = h('input', { type: 'checkbox', checked: !!w.done }); cb.addEventListener('change', () => { PT.weeklyMark(ws, j.id, { done: cb.checked }); PT.save(); PT.render(); });
+      const sel = h('select', { class: 'day-pick', onchange: e => { PT.weeklyMark(ws, j.id, { day: e.target.value }); PT.save(); PT.render(); } },
+        h('option', { value: '' }, w.day ? 'No day' : 'Do on…'), days.map(d => h('option', { value: d, selected: d === w.day }, PT.dayName(d))));
+      return h('div', { class: 'ag-top', style: { padding: '6px 0', borderBottom: '1px solid var(--line)' } }, cb,
+        h('div', { class: 'grow' + (w.done ? ' muted' : ''), style: w.done ? { textDecoration: 'line-through' } : {} }, j.title), sel);
+    }));
+};
+
 PT.moreViews.regular = function () {
   const list = PT.state.regular = PT.state.regular || [];
   const daysText = d => d.length === 7 ? 'Every day' : DOW.filter(([v]) => d.includes(v)).map(x => x[1]).join(', ');
   return h('div', {}, PT.back('#/more', 'More'), h('h1', {}, 'Regular schedule'),
     h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Things that come round each week. "Automatic" ones go onto your plan by themselves; "Suggested" ones show on those days for you to add with one tap.'),
+    h('h2', {}, 'On set days'),
     h('button', { class: 'btn block', style: { marginBottom: '12px' }, onclick: () => regularForm(null) }, '+ New regular item'),
     list.length ? list.slice().sort((a, b) => (a.time || '99') < (b.time || '99') ? -1 : 1).map(r => h('div', { class: 'card tap', onclick: () => regularForm(r) },
       h('div', { class: 'row between' }, h('b', {}, r.title), h('span', { class: 'pill' + (r.auto ? ' type' : '') }, r.auto ? 'Automatic' : 'Suggested')),
-      h('div', { class: 'small muted' }, daysText(r.days || []) + (r.time ? ' · ' + r.time : '') + (((r.exIds || []).length || r.sessionId) ? ' · adds training' : '')))) : h('div', { class: 'empty' }, 'Nothing regular yet.'));
+      h('div', { class: 'small muted' }, daysText(r.days || []) + (r.time ? ' · ' + r.time : '') + (((r.exIds || []).length || r.sessionId) ? ' · adds training' : '')))) : h('div', { class: 'empty' }, 'Nothing regular yet.'),
+    h('h2', {}, 'Once a week, any day'),
+    h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Jobs to get done sometime each week (e.g. deep clean the flat). They show as a checklist at the top of the week on Plan, fresh every Monday; you can put one on a specific day.'),
+    (PT.state.weekly || []).map(j => h('div', { class: 'card tap', onclick: () => weeklyForm(j) }, h('b', {}, j.title), j.detail ? h('div', { class: 'small muted' }, j.detail.length > 80 ? j.detail.slice(0, 80) + '…' : j.detail) : null)),
+    h('button', { class: 'btn ghost block', onclick: () => weeklyForm(null) }, '+ New weekly job'));
 };
+function weeklyForm(existing) {
+  const d = existing ? Object.assign({}, existing) : { id: PT.uid(), title: '', detail: '' };
+  const sh = PT.sheet(existing ? 'Edit weekly job' : 'New weekly job', h('div', {},
+    PT.field('What', h('input', { value: d.title, placeholder: 'e.g. Deep clean the flat', oninput: e => d.title = e.target.value })), gap(8),
+    PT.field('Details (optional)', h('textarea', { value: d.detail, oninput: e => d.detail = e.target.value })), gap(12),
+    h('button', { class: 'btn block', onclick: () => {
+      if (!d.title.trim()) { PT.toast('Say what it is'); return; }
+      const L = PT.state.weekly = PT.state.weekly || [], i = L.findIndex(x => x.id === d.id); d.title = d.title.trim(); if (i >= 0) L[i] = d; else L.push(d);
+      PT.save(); sh.close(); PT.render();
+    } }, 'Save'),
+    existing ? h('button', { class: 'btn danger block', style: { marginTop: '8px' }, onclick: () => { PT.state.weekly = PT.state.weekly.filter(x => x.id !== d.id); PT.save(); sh.close(); PT.render(); } }, 'Delete') : null));
+}
 function regularForm(existing) {
   const r = existing ? JSON.parse(JSON.stringify(existing)) : { id: PT.uid(), title: '', days: [], time: '', auto: false, exIds: [], sessionId: '' };
   r.exIds = r.exIds || [];
@@ -174,14 +248,21 @@ PT.moreViews.goals = function () {
         a.items.map(it => {
           const cb = h('input', { type: 'checkbox', checked: !!it.done }); cb.addEventListener('change', () => { it.done = cb.checked; PT.save(); PT.render(); });
           // details: write out exactly what you're trying to do, why, and how
+          const tg = it.target = it.target || {};
           const more = h('div', { class: 'goal-detail', style: { display: goalOpen[it.id] ? '' : 'none' } },
-            h('textarea', { value: it.detail || '', placeholder: 'What exactly am I aiming for, why it matters, how I\'ll get there, what done looks like…', oninput: e => { it.detail = e.target.value; PT.save(); } }));
+            h('textarea', { value: it.detail || '', placeholder: 'What exactly am I aiming for, why it matters, how I\'ll get there, what done looks like…', oninput: e => { it.detail = e.target.value; PT.save(); } }),
+            h('div', { class: 'small muted', style: { margin: '8px 0 4px' } }, 'Number target (optional), e.g. longest run 21 → 42 km'),
+            h('div', { class: 'grid2' },
+              PT.field('Start', PT.numInput(tg.start, v => { tg.start = v; PT.save(); })), PT.field('Target', PT.numInput(tg.target, v => { tg.target = v; PT.save(); })),
+              PT.field('Where I am now', PT.numInput(tg.now, v => { tg.now = v; PT.save(); })), PT.field('Unit', h('input', { value: tg.unit || '', placeholder: 'km, kg, £…', oninput: e => { tg.unit = e.target.value; PT.save(); } }))));
+          const pct = (+tg.target !== +tg.start && tg.target !== '' && tg.target != null && tg.now !== '' && tg.now != null) ? Math.max(0, Math.min(100, Math.round((+tg.now - +tg.start) / (+tg.target - +tg.start) * 100))) : null;
           const toggle = h('button', { class: 'back small', style: { margin: '0 0 0 36px', color: 'var(--red2)' }, onclick: () => { goalOpen[it.id] = !goalOpen[it.id]; more.style.display = goalOpen[it.id] ? '' : 'none'; toggle.textContent = goalOpen[it.id] ? 'Hide details' : (it.detail ? 'Details ›' : '+ Add details'); } },
             goalOpen[it.id] ? 'Hide details' : (it.detail ? 'Details ›' : '+ Add details'));
           return h('div', { class: 'goal-item' },
             h('label', { class: 'checkrow' + (it.done ? ' done' : ''), style: { borderBottom: 0, paddingBottom: '2px' } }, cb, h('div', { class: 'grow t' }, it.text),
               h('button', { class: 'btn ghost small', 'aria-label': 'Remove', onclick: ev => { ev.preventDefault(); PT.confirm('Remove "' + it.text + '"?', 'Remove', () => { a.items = a.items.filter(x => x.id !== it.id); PT.save(); PT.render(); }); } }, '✕')),
             it.detail && !goalOpen[it.id] ? h('div', { class: 'small muted', style: { margin: '0 0 2px 36px' } }, it.detail.length > 90 ? it.detail.slice(0, 90) + '…' : it.detail) : null,
+            pct != null ? h('div', { style: { margin: '2px 0 2px 36px' } }, h('div', { class: 'row between small' }, h('span', { class: 'muted' }, (+tg.now) + ' of ' + (+tg.target) + ' ' + (tg.unit || '')), h('b', {}, pct + '%')), h('div', { class: 'bar' + (pct >= 100 ? ' ok' : '') }, h('i', { style: { width: pct + '%' } }))) : null,
             toggle, more);
         }),
         h('div', { class: 'row', style: { marginTop: '8px', flexWrap: 'nowrap' } },
