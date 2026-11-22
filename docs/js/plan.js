@@ -21,59 +21,87 @@ PT.dayFuel = date => PT.sumMacros(PT.state.foodLog[date] || []);
 PT.views.plan = function (parts) { return parts[1] ? dayView(parts[1]) : weekView(); };
 PT.views.log = function (parts) { return dayView(parts[1]); }; // old links to a session log now open the day
 
-/* ---------- week ---------- */
+/* ---------- week: today big at the top, then the week as slim rows ---------- */
 function weekView() {
   if (!anchor) anchor = PT.weekStart(PT.today());
-  const days = [0, 1, 2, 3, 4, 5, 6].map(i => PT.addDays(anchor, i));
+  const today = PT.today(), days = [0, 1, 2, 3, 4, 5, 6].map(i => PT.addDays(anchor, i));
   const trained = days.filter(d => PT.dayCompleted(d)).length;
   const planned = days.filter(d => PT.dayExs(d).length).length;
-  const q = PT.todayQuote();
+  const thisWs = PT.weekStart(today), q = PT.todayQuote();
+  const label = anchor === thisWs ? 'This week' : anchor === PT.addDays(thisWs, 7) ? 'Next week' : anchor === PT.addDays(thisWs, -7) ? 'Last week' : 'Week of ' + PT.niceDate(anchor);
+  const move = n => { anchor = PT.addDays(anchor, n); PT.render(); };
   return h('div', {},
     h('h1', {}, 'Plan'),
+    todayHero(today),
     PT.backupNudge ? PT.backupNudge() : null,
     PT.photoNudge ? PT.photoNudge() : null,
     q ? h('div', { class: 'quote' }, '“' + q.text + '”', q.by ? h('small', {}, q.by) : null) : null,
-    h('div', { class: 'week-nav' },
-      h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.addDays(anchor, -7); PT.render(); } }, '‹'),
-      h('div', { class: 'week-title' }, PT.niceDate(days[0]) + ' – ' + PT.niceDate(days[6]),
-        h('div', { class: 'small muted' }, planned ? trained + ' of ' + planned + ' training days completed' : 'Nothing planned yet')),
-      h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.addDays(anchor, 7); PT.render(); } }, '›')),
+    h('div', { class: 'wk-nav' },
+      h('button', { class: 'icon-btn', 'aria-label': 'Previous week', onclick: () => move(-7) }, PT.icon('left')),
+      h('div', { class: 'wk-title' }, h('b', {}, label), h('div', { class: 'small' }, planned ? trained + ' of ' + planned + ' training days done' : 'Nothing planned yet')),
+      h('button', { class: 'icon-btn', 'aria-label': 'Next week', onclick: () => move(7) }, PT.icon('right'))),
+    h('div', { class: 'wrows' }, days.filter(d => d !== today).map(weekRow)),
     PT.weeklyCard ? PT.weeklyCard(anchor) : null,
-    days.map(dayCard),
-    h('div', { class: 'row', style: { marginTop: '8px' } },
-      h('button', { class: 'btn ghost small', onclick: () => { anchor = PT.weekStart(PT.today()); PT.render(); } }, 'This week'),
-      h('button', { class: 'btn ghost small', onclick: copyShifts }, 'Copy last week’s shifts')),
-    h('button', { class: 'btn ghost block', style: { marginTop: '8px' }, onclick: () => PT.importSheet() }, 'Import calendar'));
+    h('div', { class: 'wk-tools' },
+      anchor !== thisWs ? h('button', { class: 'btn ghost small', onclick: () => { anchor = thisWs; PT.render(); } }, 'Back to this week') : null,
+      h('button', { class: 'btn ghost small', onclick: copyShifts }, 'Copy last week’s shifts'),
+      h('button', { class: 'btn ghost small', onclick: () => PT.importSheet() }, 'Import calendar')));
 }
 
-// One day in the week list: plain lines (shift, training, what's planned, reminders). Tap to open more
-// (calendar, macro goals, notes) and a button into the day.
-function dayCard(date) {
-  const day = PT.state.plan[date] || {}, exs = day.exs || [], evs = day.events || [];
-  const title = PT.dayTitle(date), completed = PT.dayCompleted(date), isToday = date === PT.today();
-  const rems = PT.remindersFor(date), t = PT.dayTargets ? PT.dayTargets(date) : null;
-  const note = (day.note || '').split('\n')[0];
-  const ag = PT.dayAgenda ? PT.dayAgenda(date) : [], agOn = ag.filter(x => !x.suggested), agSug = ag.filter(x => x.suggested);
-  const amtOf = en => { const x = completed && PT.hasActual(en) ? en.actual : PT.hasPlan(en) ? en.plan : null; return x ? PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, x)) : ''; };
-  // today opens by itself and shows each exercise with its amount
-  const det = h('details', { class: 'card daycard' + (isToday ? ' today' : '') + (completed ? ' completed' : ''), open: isToday },
-    h('summary', {},
-      h('div', { class: 'day-head' }, h('div', { class: 'day-name' }, isToday ? h('span', { class: 'red' }, '● ') : null, PT.dayName(date)), h('div', { class: 'day-date' }, PT.niceDate(date), h('span', { class: 'chev' }))),
-      h('div', { class: 'day-line' + (day.shift ? '' : ' muted') }, PT.shiftText(day.shift)),
-      title ? h('div', { class: 'day-line' }, h('b', {}, title), completed ? h('span', { class: 'ok' }, ' · completed ✓') : date < PT.today() ? h('span', { class: 'red' }, ' · not completed') : null)
-        : h('div', { class: 'day-line muted' }, 'Rest day'),
-      planLine(date) ? h('div', { class: 'day-line small muted' }, planLine(date)) : null,
-      agOn.length ? h('div', { class: 'day-line small' }, agOn.map(x => PT.agendaText(x) + (x.done ? ' ✓' : '')).join(' · ')) : null,
-      agSug.length ? h('div', { class: 'day-line small muted' }, '+ ' + agSug.length + ' suggested: ' + agSug.map(x => x.title).join(', ')) : null,
-      rems.map(r => h('div', { class: 'day-line rem' }, h('b', {}, 'Reminder: '), r.text))),
-    h('div', { class: 'daycard-more' },
-      isToday && exs.length ? [h('div', { class: 'f' }, 'Training'), exs.map(en => h('div', { class: 'today-ex' }, h('span', {}, en.name), h('span', { class: 'muted' }, amtOf(en)))), h('div', { style: { height: '8px' } })] : null,
-      agOn.length ? [h('div', { class: 'f' }, 'Calendar · day plan'), agOn.map(x => h('div', { class: 'day-line small' + (x.done ? ' muted' : '') }, PT.agendaText(x) + (x.done ? ' ✓' : '')))] : h('div', { class: 'small muted' }, 'Nothing in the calendar.'),
-      t && t.kcal ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Macro goals'), h('div', { class: 'day-line small' }, t.kcal + ' kcal · P ' + t.p + ' g · C ' + t.c + ' g · F ' + t.f + ' g')] : null,
-      note ? [h('div', { class: 'f', style: { marginTop: '8px' } }, 'Notes'), h('div', { class: 'day-line small' }, note.length > 90 ? note.slice(0, 90) + '…' : note)] : null,
-      h('a', { class: 'btn small block', style: { marginTop: '10px' }, href: '#/plan/' + date }, isToday ? (exs.length && !completed ? 'Open today to log ›' : 'Open today ›') : 'Open ' + PT.dayName(date) + ' ›')));
-  return det;
+// Short amount for an exercise: what you did once logged, otherwise the plan.
+function amtOf(en) {
+  if (en.skipped) return 'Skipped';
+  const x = PT.hasActual(en) ? en.actual : PT.hasPlan(en) ? en.plan : null;
+  return x ? PT.exText(Object.assign({ kind: en.kind, unit: en.unit }, x)) : '';
 }
+
+// Today, big: training title, shift, progress ring, what's on, and one button in.
+function todayHero(date) {
+  const day = PT.state.plan[date] || {}, exs = day.exs || [], completed = PT.dayCompleted(date);
+  const ag = PT.dayAgenda(date).filter(x => !x.suggested), pr = PT.dayProgress(date), rems = PT.remindersFor(date);
+  return h('div', { class: 'hero' + (completed ? ' done' : '') },
+    h('div', { class: 'hero-top' },
+      h('div', { class: 'grow' },
+        h('div', { class: 'eyebrow' + (completed ? ' ok' : '') }, completed ? 'Today · complete ✓' : 'Today · ' + PT.niceDate(date)),
+        h('div', { class: 'hero-title' }, PT.dayTitle(date) || 'Rest day'),
+        h('div', { class: 'hero-sub' }, PT.shiftText(day.shift))),
+      pr.total ? PT.ring(completed ? pr.total : pr.done, pr.total, 76) : null),
+    exs.length || ag.length ? h('div', { class: 'hero-list' },
+      exs.map(en => h('div', { class: 'hero-ex' + (PT.hasActual(en) ? ' done' : '') }, h('span', {}, en.name), h('span', {}, PT.hasActual(en) ? h('span', { class: 'ok-mark' }, '✓ ') : null, amtOf(en)))),
+      ag.map(x => h('div', { class: 'hero-ex' + (x.done ? ' done' : '') }, h('span', {}, x.title), h('span', {}, x.done ? h('span', { class: 'ok-mark' }, '✓ ') : null, x.time ? x.time + (x.end ? '–' + x.end : '') : '')))) : null,
+    rems.map(r => h('div', { class: 'rem-line' }, h('b', {}, 'Reminder: '), r.text)),
+    h('a', { class: 'btn block' + (completed ? ' ghost' : ''), href: '#/plan/' + date }, completed ? 'Open today' : exs.length ? 'Start today' : 'Open today'));
+}
+
+// One slim row per day: date, training, shift and what's planned, and a done tick.
+function weekRow(date) {
+  const day = PT.state.plan[date] || {}, exs = day.exs || [], title = PT.dayTitle(date);
+  const completed = PT.dayCompleted(date), past = date < PT.today();
+  const ag = PT.dayAgenda(date).filter(x => !x.suggested), rems = PT.remindersFor(date);
+  const sub = [day.shift ? PT.shiftText(day.shift).replace(' shift', '') : 'Day off', planLine(date), ag.length ? ag.length + ' in calendar' : ''].filter(Boolean).join(' · ');
+  return h('a', { class: 'wrow' + (exs.length ? '' : ' rest'), href: '#/plan/' + date },
+    h('div', { class: 'wrow-date' }, h('small', {}, PT.dayName(date).toUpperCase()), h('b', {}, PT.parse(date).getDate())),
+    h('div', { class: 'wrow-main' },
+      h('div', { class: 'wrow-title' }, title || 'Rest day'),
+      h('div', { class: 'wrow-sub' }, rems.length ? h('b', {}, (rems.length === 1 ? 'Reminder' : rems.length + ' reminders') + ' · ') : null, sub)),
+    h('div', { class: 'wrow-end' },
+      completed ? h('span', { class: 'st-done', 'aria-label': 'Completed' }, PT.icon('check', 3)) : past && exs.length ? h('span', { class: 'st-miss' }, 'Not done') : null,
+      completed ? null : PT.icon('chev')));
+}
+
+// How much of a day is ticked off: each exercise, the warm-up, the cool-down, and calendar items.
+function stretchState(date, tags, phase) {
+  const { list, SHOW } = PT.stretchList(date, tags, phase, true);
+  const d = (PT.state.recoveryLog[date] || {}).done || {};
+  const count = list.filter(x => d[x.id]).length, need = Math.min(SHOW, list.length);
+  return { total: list.length, count, need, done: list.length > 0 && count >= need, list, SHOW };
+}
+PT.dayProgress = date => {
+  const exs = PT.dayExs(date), items = exs.map(en => PT.hasActual(en) || !!en.skipped);
+  if (exs.length && PT.stretchList) { const tags = PT.dayTags(date); ['before', 'after'].forEach(ph => { const s = stretchState(date, tags, ph); if (s.total) items.push(s.done); }); }
+  PT.dayAgenda(date).filter(x => !x.suggested).forEach(x => items.push(!!x.done));
+  return { done: items.filter(Boolean).length, total: items.length };
+};
 
 // Short "what's planned" line for the week list, e.g. "Treadmill run 5 km · Strength 4 exercises"; after logging "3/5 km".
 const amt = (en, x) => en.kind === 'laps' ? (+x.sets || 1) + '×' + (+x.laps || 0) + ' laps' : en.kind === 'cardio' ? (+x.distance || 0) + ' ' + (en.unit || 'km') : en.kind === 'time' ? (+x.rounds || 0) + ' rounds' : '';
@@ -159,121 +187,202 @@ function remindersCard(date) {
       } }, 'Done ✓'))));
 }
 
-/* ---------- day page: shift on top, then drop boxes ---------- */
+/* ---------- day page: big header with progress, then a checklist of the day ---------- */
+const openTask = {}; // which task rows are opened up (date + id)
 function dayView(date) {
   const day = PT.state.plan[date] || {};
-  const isToday = date === PT.today();
-  const root = h('div', {}, PT.back('#/plan', 'Week'), h('h1', {}, isToday ? 'Today · ' + PT.niceDate(date) : PT.niceDate(date)));
-
-  // shift: always at the top. Tap one of your usual shifts, or set other times.
-  const shift = day.shift ? Object.assign({}, day.shift) : { start: '07:00', end: '15:00' };
-  const setShift = sh => { ensureDay(date).shift = sh ? { start: sh.start, end: sh.end } : null; PT.save(); PT.render(); };
-  const presets = PT.state.settings.shiftPresets || [];
-  const same = sh => day.shift && day.shift.start === sh.start && day.shift.end === sh.end;
-  root.append(PT.section('shift', PT.shiftText(day.shift), presets.length ? 'Tap to change' : 'Tap to set your shift', [
-    h('div', {},
-      presets.map(sh => h('span', { class: 'chip' + (same(sh) ? ' on' : ''), onclick: () => setShift(sh) }, PT.shiftText(sh))),
-      h('span', { class: 'chip' + (!day.shift ? ' on' : ''), onclick: () => setShift(null) }, 'Day off')),
-    !presets.length ? h('p', { class: 'small muted' }, 'Set the times once and tap "Save as a usual shift". Next time it is one tap. Shifts starting before 12:00 are morning shifts, later ones evening shifts.') : null,
-    h('div', { class: 'card', style: { marginTop: '6px' } },
-      h('b', {}, 'Other times'),
-      h('div', { class: 'grid2', style: { margin: '8px 0' } },
-        PT.field('Start', h('input', { type: 'time', value: shift.start, oninput: e => shift.start = e.target.value })),
-        PT.field('End', h('input', { type: 'time', value: shift.end, oninput: e => shift.end = e.target.value }))),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn small grow', onclick: () => setShift(shift) }, 'Use these times'),
-        h('button', { class: 'btn ghost small grow', onclick: () => {
-          const st = PT.state.settings; st.shiftPresets = st.shiftPresets || [];
-          if (!st.shiftPresets.some(x => x.start === shift.start && x.end === shift.end)) st.shiftPresets.push({ start: shift.start, end: shift.end });
-          st.shiftPresets.sort((x, y) => x.start < y.start ? -1 : 1);
-          setShift(shift); PT.toast('Saved as a usual shift');
-        } }, 'Save as a usual shift')))]));
+  const isToday = date === PT.today(), completed = PT.dayCompleted(date);
+  const eyebrow = completed ? 'Day complete ✓' : isToday ? 'Today · ' + PT.niceDate(date) : date === PT.addDays(PT.today(), 1) ? 'Tomorrow · ' + PT.niceDate(date) : PT.niceDate(date);
+  const ringBox = h('div', {});
+  const refreshRing = () => { const pr = PT.dayProgress(date); PT.fill(ringBox, pr.total ? PT.ring(completed ? pr.total : pr.done, pr.total, 92) : null); };
+  refreshRing();
+  const root = h('div', {}, PT.back('#/plan', 'Week'),
+    h('div', { class: 'day-hero' },
+      h('div', { class: 'grow' },
+        h('div', { class: 'eyebrow' + (completed ? ' ok' : isToday ? '' : ' muted') }, eyebrow),
+        h('h1', {}, PT.dayTitle(date) || 'Rest day'),
+        h('button', { class: 'chip-btn' + (day.shift ? '' : ' off'), onclick: () => shiftSheet(date) }, PT.icon('clock'), PT.shiftText(day.shift).replace(' shift', ''), h('span', { class: 'muted' }, '›'))),
+      ringBox));
 
   root.append(remindersCard(date) || '');
-  if (PT.dayCompleted(date)) root.append(h('div', { class: 'card', style: { borderColor: 'var(--ok)' } }, h('b', { class: 'ok' }, '✓ Day completed'), h('span', { class: 'small muted' }, ' · logged to Progress')));
-  else if (date < PT.today() && PT.dayExs(date).length) root.append(h('div', { class: 'card reminder' }, h('b', { class: 'red' }, 'Not completed yet'), h('div', { class: 'small muted' }, 'Fill in what you did, then tap Complete day at the bottom of Training.')));
+  if (completed) root.append(h('div', { class: 'done-banner' }, h('span', { class: 'st-done' }, PT.icon('check', 3)),
+    h('div', { class: 'grow' }, h('b', {}, 'Day completed'), h('div', { class: 'small muted' }, 'Logged to Progress')),
+    h('button', { class: 'btn ghost small', onclick: () => { ensureDay(date).completed = false; PT.syncDayLog(date); PT.save(); PT.toast('Day reopened'); PT.render(); } }, 'Reopen')));
+  else if (date < PT.today() && PT.dayExs(date).length) root.append(h('div', { class: 'card reminder' }, h('b', { class: 'red' }, 'Not completed yet'), h('div', { class: 'small muted' }, 'Tick off what you did, then tap Complete day.')));
 
-  // training: warm-up, exercises, cool-down and other recovery, all in one box
-  const train = h('div', {});
-  const redraw = () => PT.fill(train, PT.section('training', 'Training', trainSummary(date), training(date, redraw)));
-  redraw();
-  root.append(train);
+  // training checklist
+  const exs = PT.dayExs(date), tags = PT.dayTags(date), canDo = date <= PT.today();
+  const tdone = exs.filter(en => PT.hasActual(en) || en.skipped).length;
+  root.append(h('h2', { class: 'grp' }, 'Training', exs.length ? h('span', {}, canDo ? tdone + ' of ' + exs.length + ' logged' : exs.length + (exs.length === 1 ? ' exercise' : ' exercises')) : null));
+  const list = h('div', { class: 'tasks' });
+  if (exs.length) list.append(stretchTask(date, tags, 'before', refreshRing));
+  exs.forEach(en => list.append(exTask(date, en, refreshRing)));
+  if (exs.length) list.append(stretchTask(date, tags, 'after', refreshRing));
+  list.append(saunaTask(date));
+  [list,
+    exs.length ? null : h('div', { class: 'small muted', style: { margin: '12px 0 0' } }, 'Nothing planned. Add exercises from the folders (Chest, Back, Legs, Swim, Run…) or drop in a saved session.'),
+    h('button', { class: 'btn block ' + (exs.length ? 'add' : 'big'), style: exs.length ? null : { marginTop: '14px' }, onclick: () => addExercises(date, PT.render) }, '+ Add exercises'),
+    exs.length && canDo ? effortBox(date) : null,
+    canDo && exs.length && !completed ? h('button', { class: 'btn block big', style: { marginTop: '18px' }, onclick: () => completeDay(date) }, 'Complete day ✓') : null].forEach(x => { if (x) root.append(x); });
 
-  // calendar / day plan
-  // calendar events and your regular schedule together, earliest first, each one tickable
-  const ne = { title: '', start: '', end: '' }, ag = PT.dayAgenda(date), agOn = ag.filter(x => !x.suggested), agSug = ag.filter(x => x.suggested);
-  root.append(PT.section('calendar', 'Calendar · day plan',
-    ag.length ? (agOn.length ? agOn.filter(x => x.done).length + ' of ' + agOn.length + ' done · ' + agOn.map(PT.agendaText).slice(0, 2).join(' · ') : 'Nothing added yet') + (agSug.length ? ' · +' + agSug.length + ' suggested' : '') : 'Nothing else on', [
-    PT.agendaList(date),
-    h('div', { class: 'card' },
-      PT.field('Add event', h('input', { placeholder: 'e.g. Physio, dinner with a friend', oninput: e => ne.title = e.target.value })),
-      h('div', { class: 'grid2', style: { margin: '8px 0' } },
-        PT.field('Start (optional)', h('input', { type: 'time', oninput: e => ne.start = e.target.value })),
-        PT.field('End (optional)', h('input', { type: 'time', oninput: e => ne.end = e.target.value }))),
-      h('button', { class: 'btn small block', onclick: () => {
-        if (!ne.title.trim()) { PT.toast('Write what it is first'); return; }
-        const d = ensureDay(date); d.events = (d.events || []).concat({ id: PT.uid(), title: ne.title.trim(), start: ne.start, end: ne.end });
-        d.events.sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1); PT.save(); PT.render();
-      } }, 'Add event')),
-    h('a', { class: 'small muted', href: '#/more/regular' }, 'Edit your regular schedule ›')]));
+  // day plan: calendar events, regular items and weekly jobs, earliest first
+  const ag = PT.dayAgenda(date), agOn = ag.filter(x => !x.suggested);
+  root.append(h('h2', { class: 'grp' }, 'Day plan', agOn.length ? h('span', {}, agOn.filter(x => x.done).length + ' of ' + agOn.length + ' done') : null),
+    h('div', { class: 'flat' }, PT.agendaList(date)),
+    h('div', { class: 'row', style: { marginTop: '10px' } },
+      h('button', { class: 'btn ghost small grow', onclick: () => eventSheet(date) }, '+ Add event'),
+      h('a', { class: 'btn ghost small grow', href: '#/more/regular' }, 'Regular schedule ›')));
 
-  // fuel: goals faded, you type what you actually had
+  // fuel and notes stay as drop boxes
   const fuelSum = h('div', { class: 'small muted' }, PT.fuelSummary(date));
-  root.append(PT.section('fuel', 'Fuel', fuelSum, [
-    PT.fuelBlock(date, () => { fuelSum.textContent = PT.fuelSummary(date); }),
-    PT.dayMeals(date),
-    h('a', { class: 'btn ghost small block', style: { marginTop: '8px' }, href: '#/more/body' }, 'Daily macro goals ›')]));
-
-  // notes: lines that mention another day show up on that day
   const firstLine = (day.note || '').split('\n')[0];
   const rem = { date: PT.addDays(date, 1), text: '' };
-  root.append(PT.section('notes', 'Notes', firstLine ? (firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine) : 'Nothing yet', [
-    h('textarea', { placeholder: 'How today went, what to remember… Mention a day ("Wed: bring swim cap", "tomorrow", "the 18th") and it shows up on that day.', value: day.note || '', onchange: e => { ensureDay(date).note = e.target.value; PT.save(); PT.toast('Saved'); } }),
-    h('div', { class: 'card', style: { marginTop: '10px' } },
-      h('b', {}, 'Remind me on another day'),
-      h('div', { class: 'grid2', style: { margin: '8px 0' } },
-        PT.field('Day', h('input', { type: 'date', value: rem.date, oninput: e => rem.date = e.target.value })),
-        PT.field('Reminder', h('input', { placeholder: 'e.g. book physio', oninput: e => rem.text = e.target.value }))),
-      h('button', { class: 'btn small block', onclick: () => {
-        if (!rem.text.trim() || !rem.date) { PT.toast('Write the reminder and pick a day'); return; }
-        const d = ensureDay(rem.date); d.reminders = (d.reminders || []).concat({ id: PT.uid(), text: rem.text.trim(), from: date });
-        PT.save(); PT.toast('Reminder added to ' + PT.niceDate(rem.date)); PT.render();
-      } }, 'Add reminder'))]));
+  root.append(h('div', { class: 'day-extra' },
+    PT.section('fuel', 'Fuel', fuelSum, [
+      PT.fuelBlock(date, () => { fuelSum.textContent = PT.fuelSummary(date); }),
+      PT.dayMeals(date),
+      h('a', { class: 'btn ghost small block', style: { marginTop: '8px' }, href: '#/more/body' }, 'Daily macro goals ›')]),
+    // notes: lines that mention another day show up on that day
+    PT.section('notes', 'Notes', firstLine ? (firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine) : 'Nothing yet', [
+      h('textarea', { placeholder: 'How today went, what to remember… Mention a day ("Wed: bring swim cap", "tomorrow", "the 18th") and it shows up on that day.', value: day.note || '', onchange: e => { ensureDay(date).note = e.target.value; PT.save(); PT.toast('Saved'); } }),
+      h('div', { class: 'card', style: { marginTop: '10px' } },
+        h('b', {}, 'Remind me on another day'),
+        h('div', { class: 'grid2', style: { margin: '8px 0' } },
+          PT.field('Day', h('input', { type: 'date', value: rem.date, oninput: e => rem.date = e.target.value })),
+          PT.field('Reminder', h('input', { placeholder: 'e.g. book physio', oninput: e => rem.text = e.target.value }))),
+        h('button', { class: 'btn ghost small block', onclick: () => {
+          if (!rem.text.trim() || !rem.date) { PT.toast('Write the reminder and pick a day'); return; }
+          const d = ensureDay(rem.date); d.reminders = (d.reminders || []).concat({ id: PT.uid(), text: rem.text.trim(), from: date });
+          PT.save(); PT.toast('Reminder added to ' + PT.niceDate(rem.date)); PT.render();
+        } }, 'Add reminder'))])));
   return root;
 }
 
-function trainSummary(date) {
-  const exs = PT.dayExs(date);
-  if (!exs.length) return 'Nothing planned · tap to add exercises';
-  const status = PT.dayCompleted(date) ? 'completed ✓' : date <= PT.today() ? 'not completed yet' : 'planned';
-  return exs.length + (exs.length === 1 ? ' exercise' : ' exercises') + ' · ' + status + ' · ' + exs.slice(0, 3).map(e => e.name).join(', ') + (exs.length > 3 ? '…' : '');
+// One row in the checklist: small tag, big name, amount underneath, round tick on the right.
+// Tapping the row opens it up underneath (to log details); the tick is the quick way to mark it done.
+function taskRow(key, o) {
+  const tick = o.tick === undefined ? null : h('button', { class: 'tick' + (o.tick === 'skip' ? ' skip' : o.tick ? ' on' : ''), 'aria-label': o.tick ? 'Done' : 'Mark done', onclick: e => { e.stopPropagation(); o.onTick(); } }, PT.icon(o.tick === 'skip' ? 'plus' : 'check', 3));
+  if (tick && o.tick === 'skip') tick.firstChild.style.transform = 'rotate(45deg)';
+  const body = h('div', { class: 'task-body' });
+  const wrap = h('div', { class: 'task' + (o.done ? ' done' : '') + (o.tick === 'skip' ? ' skipped' : '') + (openTask[key] ? ' open' : '') },
+    h('div', { class: 'task-row', onclick: () => { openTask[key] = !openTask[key]; wrap.classList.toggle('open', openTask[key]); show(); } },
+      h('div', { class: 'task-main' }, o.tag ? h('div', { class: 'task-tag' }, o.tag) : null, h('div', { class: 'task-name' }, o.name), h('div', { class: 'task-amt' }, o.amt)),
+      tick || h('span', { class: 'task-chev' }, PT.icon('chev'))),
+    body);
+  function show() { if (openTask[key]) { if (!body.firstChild) PT.fill(body, o.body()); body.style.display = ''; } else body.style.display = 'none'; }
+  show();
+  return wrap;
 }
 
-function training(date, redraw) {
-  const exs = PT.dayExs(date), tags = PT.dayTags(date);
-  return [
-    PT.stretchBlock(date, tags, 'before', true),
-    exs.length ? exs.map(en => entryCard(date, en, redraw)) : h('div', { class: 'empty' }, 'Nothing yet. Tap Add exercises and pick from the folders: Chest, Back, Legs, Swim, Run…'),
-    h('button', { class: 'btn block', onclick: () => addExercises(date, redraw) }, '+ Add exercises'),
-    exs.length && date <= PT.today() ? effortBox(date) : null,
-    gap(10),
-    PT.stretchBlock(date, tags, 'after', true),
-    PT.activityBlock(date),
-    date <= PT.today() && exs.length ? completeBox(date) : null
-  ];
+function exTask(date, en, refreshRing) {
+  const canDo = date <= PT.today(), lib = PT.libEx(en), sport = PT.entrySport(en);
+  const tag = sport ? PT.tagLabel(sport) : lib && (lib.muscles || [])[0] ? PT.tagLabel(lib.muscles[0]) : '';
+  const amtLine = () => {
+    if (en.skipped) return 'Skipped · tap to log it after all';
+    if (PT.hasActual(en)) return h('span', {}, h('span', { class: 'ok' }, '✓ '), amtOf(en));
+    if (PT.hasPlan(en)) return (canDo ? 'Plan: ' : '') + amtOf(en);
+    return canDo ? 'Tap to fill in what you did' : 'Tap to set the plan';
+  };
+  const key = date + en.id;
+  const row = taskRow(key, {
+    tag, name: en.name, amt: amtLine(), done: PT.hasActual(en),
+    tick: canDo ? (en.skipped ? 'skip' : PT.hasActual(en)) : undefined,
+    onTick: () => {
+      // quick log: no numbers yet and a plan → log it as planned; otherwise open it to type
+      if (!PT.hasActual(en) && !en.skipped && PT.hasPlan(en)) {
+        en.actual = Object.assign({}, en.plan); en.skipped = false; PT.syncDayLog(date); PT.save(); PT.toast('Logged as planned ✓'); PT.render();
+      } else { openTask[key] = true; PT.render(); }
+    },
+    body: () => entryCard(date, en, PT.render)
+  });
+  // typing in the boxes updates the row and the ring straight away
+  row.addEventListener('input', () => setTimeout(() => {
+    const t = row.querySelector('.task-amt'); if (t) PT.fill(t, amtLine());
+    const tk = row.querySelector('.tick'); if (tk) tk.classList.toggle('on', PT.hasActual(en));
+    row.classList.toggle('done', PT.hasActual(en)); refreshRing();
+  }));
+  return row;
 }
+
+function stretchTask(date, tags, phase, refreshRing) {
+  const before = phase === 'before', key = date + phase;
+  const st = stretchState(date, tags, phase);
+  const amt = s => s.total ? (s.done ? h('span', {}, h('span', { class: 'ok' }, '✓ '), s.count + ' moves done') : s.count ? s.count + ' of ' + s.need + ' moves done' : s.need + ' moves matched to today') : 'Pick moves from the folders';
+  const row = taskRow(key, {
+    tag: before ? 'Before' : 'After', name: before ? 'Warm-up' : 'Cool-down', amt: amt(st), done: st.done,
+    tick: date <= PT.today() && st.total ? st.done : undefined,
+    onTick: () => {
+      if (st.done) { openTask[key] = true; PT.render(); return; }
+      const d = PT.state.recoveryLog[date] = PT.state.recoveryLog[date] || {}; d.done = d.done || {};
+      st.list.slice(0, st.SHOW).forEach(x => d.done[x.id] = true); PT.save(); PT.render();
+    },
+    body: () => { const b = PT.stretchBlock(date, tags, phase, true), det = b.querySelector('details'); if (det) det.open = true; return b; }
+  });
+  row.addEventListener('change', () => setTimeout(() => {
+    const s = stretchState(date, tags, phase); PT.fill(row.querySelector('.task-amt'), amt(s));
+    const tk = row.querySelector('.tick'); if (tk) tk.classList.toggle('on', s.done); row.classList.toggle('done', s.done); refreshRing();
+  }));
+  return row;
+}
+
+function saunaTask(date) {
+  const txt = () => { const r = PT.state.recoveryLog[date] || {}; return [+r.sauna ? r.sauna + ' min sauna' : '', +r.steam ? r.steam + ' min steam room' : ''].filter(Boolean).join(' · '); };
+  const row = taskRow(date + 'sauna', { tag: 'Recovery', name: 'Sauna & steam', amt: txt() || 'Optional · tap to add minutes', done: !!txt(), body: () => PT.activityBlock(date) });
+  row.addEventListener('input', () => setTimeout(() => { row.querySelector('.task-amt').textContent = txt() || 'Optional · tap to add minutes'; }));
+  return row;
+}
+
+// Shift: one tap for your usual shifts, or set other times.
+function shiftSheet(date) {
+  const day = PT.state.plan[date] || {};
+  const shift = day.shift ? Object.assign({}, day.shift) : { start: '07:00', end: '15:00' };
+  let sh;
+  const setShift = s => { ensureDay(date).shift = s ? { start: s.start, end: s.end } : null; PT.save(); sh.close(); PT.render(); };
+  const presets = PT.state.settings.shiftPresets || [];
+  const same = s => day.shift && day.shift.start === s.start && day.shift.end === s.end;
+  sh = PT.sheet('Shift · ' + PT.niceDate(date), h('div', {},
+    h('div', {},
+      presets.map(s => h('span', { class: 'chip' + (same(s) ? ' on' : ''), onclick: () => setShift(s) }, PT.shiftText(s))),
+      h('span', { class: 'chip' + (!day.shift ? ' on' : ''), onclick: () => setShift(null) }, 'Day off')),
+    !presets.length ? h('p', { class: 'small muted' }, 'Set the times once and tap "Save as a usual shift". Next time it is one tap. Shifts starting before 12:00 are morning shifts, later ones evening shifts.') : null,
+    h('h2', {}, 'Other times'),
+    h('div', { class: 'grid2', style: { margin: '0 0 10px' } },
+      PT.field('Start', h('input', { type: 'time', value: shift.start, oninput: e => shift.start = e.target.value })),
+      PT.field('End', h('input', { type: 'time', value: shift.end, oninput: e => shift.end = e.target.value }))),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn small grow', onclick: () => setShift(shift) }, 'Use these times'),
+      h('button', { class: 'btn ghost small grow', onclick: () => {
+        const st = PT.state.settings; st.shiftPresets = st.shiftPresets || [];
+        if (!st.shiftPresets.some(x => x.start === shift.start && x.end === shift.end)) st.shiftPresets.push({ start: shift.start, end: shift.end });
+        st.shiftPresets.sort((x, y) => x.start < y.start ? -1 : 1);
+        setShift(shift); PT.toast('Saved as a usual shift');
+      } }, 'Save as a usual shift'))));
+}
+
+function eventSheet(date) {
+  const ne = { title: '', start: '', end: '' };
+  const sh = PT.sheet('Add event · ' + PT.niceDate(date), h('div', {},
+    PT.field('What', h('input', { placeholder: 'e.g. Physio, dinner with a friend', oninput: e => ne.title = e.target.value })),
+    h('div', { class: 'grid2', style: { margin: '10px 0 14px' } },
+      PT.field('Start (optional)', h('input', { type: 'time', oninput: e => ne.start = e.target.value })),
+      PT.field('End (optional)', h('input', { type: 'time', oninput: e => ne.end = e.target.value }))),
+    h('button', { class: 'btn block', onclick: () => {
+      if (!ne.title.trim()) { PT.toast('Write what it is first'); return; }
+      const d = ensureDay(date); d.events = (d.events || []).concat({ id: PT.uid(), title: ne.title.trim(), start: ne.start, end: ne.end });
+      d.events.sort((a, b) => (a.start || '') < (b.start || '') ? -1 : 1); PT.save(); sh.close(); PT.render();
+    } }, 'Add event')));
+}
+
+// The short "Day complete" moment.
+PT.celebrate = (title, sub) => {
+  const el = h('div', { class: 'celebrate' }, h('div', { class: 'cel-ring' }, PT.icon('check', 3)), h('b', {}, title || 'Day complete'), sub ? h('small', {}, sub) : null);
+  document.body.append(el); setTimeout(() => el.remove(), 1950);
+};
 
 // "Complete day": the line between what's planned and what's done. Only completed days count in Progress.
-function completeBox(date) {
-  const day = PT.state.plan[date] || {};
-  if (day.completed) return h('div', { class: 'card', style: { borderColor: 'var(--ok)', marginTop: '10px' } },
-    h('div', { class: 'row between' }, h('b', { class: 'ok' }, '✓ Day completed'), h('span', { class: 'small muted' }, 'logged to Progress')),
-    h('button', { class: 'btn ghost small block', style: { marginTop: '8px' }, onclick: () => { day.completed = false; PT.syncDayLog(date); PT.save(); PT.toast('Day reopened'); PT.render(); } }, 'Reopen day to change it'));
-  return h('button', { class: 'btn block', style: { marginTop: '12px', minHeight: '56px', fontSize: '18px' }, onclick: () => completeDay(date) }, 'Complete day ✓');
-}
 function completeDay(date) {
   const d = ensureDay(date), open = d.exs.filter(e => !PT.hasActual(e) && !e.skipped);
-  const finish = () => { d.completed = true; d.completedAt = Date.now(); PT.syncDayLog(date); PT.save(); PT.toast('Day completed ✓ Logged to Progress'); PT.render(); };
+  const finish = () => { d.completed = true; d.completedAt = Date.now(); PT.syncDayLog(date); PT.save(); PT.render(); PT.celebrate('Day complete', 'Logged to Progress'); };
   if (!open.length) { finish(); return; }
   const planned = open.filter(PT.hasPlan);
   const sh = PT.sheet('Complete day', h('div', {},
@@ -325,7 +434,7 @@ function entryCard(date, en, redraw, planMode) {
     : lib ? h('div', { class: 'small muted', style: { marginTop: '4px' } }, h('button', { class: 'back small', style: { color: 'var(--muted)', margin: 0, textDecoration: 'underline' }, onclick: () => {
         const box = h('div', {}); const sh = PT.sheet('Min / max: ' + lib.name, box); PT.rangeForm(box, lib, () => { sh.close(); redraw(); });
       } }, 'Set your min/max (optional)')) : null;
-  const el = h('div', { class: 'card' },
+  const el = h('div', { class: 'card entry' },
     h('div', { class: 'row between', style: { flexWrap: 'nowrap' } },
       h('h3', { class: 'grow' }, en.name), pill,
       h('button', { class: 'btn ghost small', 'aria-label': 'Remove ' + en.name, onclick: () => {

@@ -14,7 +14,7 @@ PT.render = function () {
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.k === key));
 };
 
-document.getElementById('nav').replaceChildren(...NAV.map(([k, l]) => h('a', { href: '#/' + k, 'data-k': k }, l)));
+document.getElementById('nav').replaceChildren(...NAV.map(([k, l]) => h('a', { href: '#/' + k, 'data-k': k, 'aria-label': l }, PT.icon(k), h('span', {}, l))));
 window.addEventListener('hashchange', () => {
   document.getElementById('modal').replaceChildren(); document.body.classList.remove('noscroll');
   window.scrollTo(0, 0); PT.render();

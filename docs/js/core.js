@@ -182,6 +182,40 @@ PT.section = (key, title, summary, kids, cls) => {
 };
 PT.back = (href, label) => h('a', { class: 'back', href }, '‹ ' + (label || 'Back'));
 
+/* ---------- line icons (drawn in code, so no image files) ---------- */
+const ICONS = {
+  plan: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5zM4 9.5h16M8.5 2.5v3M15.5 2.5v3M8 13.5h3',
+  progress: 'M5 20v-6M12 20V9M19 20V4',
+  journal: 'M6 3.5h10.5A1.5 1.5 0 0 1 18 5v15.5H7.5A1.5 1.5 0 0 1 6 19zM6 17.5h12M9.5 8h5',
+  library: 'M4 4.5h4.5v15H4zM10.5 4.5H15v15h-4.5zM16.5 5.5l3.5-1 3 14.5-3.6 1',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+  chev: 'M9 5.5l6.5 6.5L9 18.5',
+  left: 'M15 5.5L8.5 12l6.5 6.5',
+  right: 'M9 5.5l6.5 6.5L9 18.5',
+  clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  plus: 'M12 5v14M5 12h14'
+};
+PT.icon = (name, sw) => {
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'), p = document.createElementNS(ns, 'path');
+  svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', String(sw || (name === 'more' ? 3.4 : 2))); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true'); p.setAttribute('d', ICONS[name] || ''); svg.append(p);
+  return svg;
+};
+// Progress ring: fills as things get done. Green with a tick once everything is done.
+PT.ring = (done, total, size) => {
+  size = size || 72; const ns = 'http://www.w3.org/2000/svg', sw = size > 80 ? 8 : 6, r = (size - sw) / 2, c = 2 * Math.PI * r;
+  const full = total > 0 && done >= total, frac = total ? Math.min(1, done / total) : 0;
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('width', size); svg.setAttribute('height', size);
+  const circ = (color, off) => { const k = document.createElementNS(ns, 'circle'); k.setAttribute('cx', size / 2); k.setAttribute('cy', size / 2); k.setAttribute('r', r);
+    k.setAttribute('fill', 'none'); k.setAttribute('stroke', color); k.setAttribute('stroke-width', sw); k.setAttribute('stroke-linecap', 'round');
+    if (off != null) { k.setAttribute('stroke-dasharray', c); k.setAttribute('stroke-dashoffset', off); } return k; };
+  svg.append(circ('rgba(255,255,255,.09)'), circ(full ? 'var(--ok)' : 'var(--red2)', c * (1 - frac)));
+  return h('div', { class: 'ring', style: { width: size + 'px', height: size + 'px' } }, svg,
+    h('div', { class: 'ring-txt' }, full ? PT.icon('check', 2.6) : [h('b', {}, done + '/' + total), h('small', {}, 'done')]));
+};
+
 /* ---------- sessions, intensity ---------- */
 PT.TYPES = [['strength', 'Strength'], ['run', 'Run'], ['swim', 'Swim'], ['bike', 'Bike'], ['mma', 'MMA'], ['other', 'Mixed']];
 PT.typeLabel = t => (PT.TYPES.find(x => x[0] === t) || [0, 'Other'])[1];
@@ -264,7 +298,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 16;
+PT.APP_VERSION = 17;
 PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';
