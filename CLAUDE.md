@@ -9,7 +9,10 @@ home-screen web app on an iPhone. **Long-term it becomes a public app for other 
 
 - Plain HTML, CSS and vanilla JavaScript in `docs/`. No build step, no framework, no backend.
 - Hosted free by GitHub Pages from the `docs/` folder on `main`: https://maxijpeak111.github.io/pt-app/
-- All user data lives on the phone only (localStorage key `pt.v1`). Backup/restore is in More → Settings.
+- User data lives in localStorage key `pt.v1`. **Cloud save** (`js/sync.js`, More → Settings): every real change is pushed to the
+  owner's own PRIVATE GitHub repo as `pt.json` via a fine-grained access key (stored on the device only, key `cloud.token`/`cloud.repo`).
+  `state._at`/`_rev` stamp real changes; newer side wins; both changed → user picks. Progress photos (IndexedDB) are NOT synced.
+  Never put user data in this (public) repo. File backup/restore still in Settings.
 - Installed from Safari: Share → Add to Home Screen.
 - Publishing = commit and push to `main`; Pages redeploys in about a minute. Claude can do this from chat.
 - The old Next.js app (`src/`, `package.json`, etc.) is legacy and not used; Pages only serves `docs/`.

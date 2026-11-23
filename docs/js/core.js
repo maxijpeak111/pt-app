@@ -298,7 +298,7 @@ const lerp = (a, b, t) => (+a || 0) + ((+b || 0) - (+a || 0)) * t;
 PT.sportOf = lib => lib ? (['run', 'swim', 'bike'].find(t => (lib.muscles || []).includes(t)) || '') : '';
 // Which sport a day's cardio entry is, worked out now (the exercise's folder today, else its name), so an exercise
 // saved outside the Run folder, like "Treadmill", still counts as a run.
-PT.APP_VERSION = 17;
+PT.APP_VERSION = 18;
 PT.isSwim = x => (x.muscles || []).includes('swim') || /swim|pool|front crawl|freestyle|breaststroke|backstroke/i.test(String(x.name || ''));
 PT.entrySport = en => {
   if (en.kind === 'laps') return 'swim';

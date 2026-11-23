@@ -56,6 +56,7 @@ PT.copyBackup = () => copyText(JSON.stringify(PT.state, null, 2)).then(() => {
 PT.daysSinceBackup = () => PT.state.settings.lastBackup ? PT.daysBetween(PT.state.settings.lastBackup, PT.today()) : null;
 // Shown on the Plan tab when a backup is 7+ days old (or never made) and there is something worth saving.
 PT.backupNudge = () => {
+  if (PT.cloud && PT.cloud.on()) return null;
   const s = PT.state, n = PT.daysSinceBackup();
   const hasData = s.logs.length || Object.values(s.plan).some(d => (d.exs || []).length || d.note || d.shift) || s.foods.length;
   if (!hasData || (n != null && n < 7) || s.settings.backupSnooze === PT.today()) return null;
@@ -136,9 +137,11 @@ PT.moreViews.settings = function () {
     h('div', { class: 'card' },
       h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Bring in your shifts, appointments and planned sessions from your calendar or rota using Claude. Copy the instructions, paste them into a Claude chat, then paste the reply back here.'),
       h('button', { class: 'btn small block', onclick: () => PT.importSheet() }, 'Import calendar')),
-    h('h2', {}, 'Backup'),
+    h('h2', {}, 'Cloud save'),
+    h('div', { class: 'card' }, PT.cloud.card()),
+    h('h2', {}, 'Backup file'),
     h('div', { class: 'card' },
-      h('p', { class: 'small muted', style: { marginTop: 0 } }, 'Your data lives only on this phone, inside this app. Deleting the app or clearing website data erases it. Back up regularly: copy it into a note or save the file.'),
+      h('p', { class: 'small muted', style: { marginTop: 0 } }, PT.cloud.on() ? 'Cloud save is on, so this is just an extra copy if you want one.' : 'Without cloud save, your data lives only on this device. Deleting the app or clearing website data erases it. Turn on cloud save above, or save a backup file now and then.'),
       h('div', { class: 'row' },
         h('button', { class: 'btn small grow', onclick: () => { PT.saveBackup(); PT.render(); } }, 'Download file'),
         h('button', { class: 'btn ghost small grow', onclick: () => PT.copyBackup().then(() => PT.render()) }, 'Copy text')),
